@@ -16,17 +16,20 @@ class DapConfig:
     weights_path: Path | None
     device: str
     python_executable: Path
+    depth_scale: float
 
     @classmethod
     def from_env(cls) -> "DapConfig":
         repo_dir = os.getenv("DAP_REPO_DIR")
         weights_path = os.getenv("DAP_WEIGHTS_PATH")
         python_executable = os.getenv("DAP_PYTHON") or sys.executable
+        depth_scale = float(os.getenv("DAP_DEPTH_SCALE", "100"))
         return cls(
             repo_dir=Path(repo_dir) if repo_dir else None,
             weights_path=Path(weights_path) if weights_path else None,
             device=os.getenv("DAP_DEVICE", "cuda"),
             python_executable=Path(python_executable),
+            depth_scale=depth_scale,
         )
 
     @property
@@ -55,7 +58,7 @@ class DapDepthEstimator:
             tmp_path = Path(tmp)
             list_path = tmp_path / "images.txt"
             output_dir = tmp_path / "output"
-            list_path.write_text(str(image_path), encoding="utf-8")
+            list_path.write_text(str(image_path.resolve()), encoding="utf-8")
 
             env = os.environ.copy()
             env["DAP_REPO_DIR"] = str(self.config.repo_dir)
@@ -79,9 +82,11 @@ class DapDepthEstimator:
                 env=env,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
 
             depth_path = output_dir / "depth_npy" / "000001.npy"
             if not depth_path.exists():
                 return None
-            return np.load(depth_path)
+            return np.load(depth_path) * self.config.depth_scale

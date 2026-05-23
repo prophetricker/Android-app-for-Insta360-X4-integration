@@ -28,6 +28,7 @@ class AnalysisService:
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
+        self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -35,6 +36,7 @@ class AnalysisService:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=2)
+            self._thread = None
 
     def save_latest_frame(self, content: bytes, suffix: str = ".jpg") -> AnalyzeResult:
         frame_path = self.upload_dir / f"latest{suffix}"

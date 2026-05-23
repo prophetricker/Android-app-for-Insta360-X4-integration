@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 from omnieye_cloud.analysis import (
@@ -6,7 +8,9 @@ from omnieye_cloud.analysis import (
     classify_distance,
     scene_text_for_level,
 )
-from omnieye_cloud.dap_adapter import DapConfig
+from omnieye_cloud.dap_adapter import DapConfig, DapDepthEstimator
+from omnieye_cloud.dap_runner import build_runtime_config, build_subprocess_env
+from omnieye_cloud.service import AnalysisService
 
 
 def test_classify_distance_thresholds():
@@ -67,3 +71,96 @@ def test_dap_config_reads_external_paths_from_env(monkeypatch):
     assert str(config.weights_path) == "D:\\Models\\DAP-weights\\model.pth"
     assert config.device == "cuda"
     assert str(config.python_executable) == "D:\\Miniconda\\envs\\dap\\python.exe"
+
+
+def test_dap_runner_overrides_weight_dir_in_runtime_config(tmp_path):
+    source_config = tmp_path / "infer.yaml"
+    source_config.write_text(
+        "model:\n"
+        "  name: dap\n"
+        "load_weights_dir: /remote/training/path\n"
+        "input:\n"
+        "  height: 512\n",
+        encoding="utf-8",
+    )
+    weights = tmp_path / "weights" / "model.pth"
+    weights.parent.mkdir()
+    weights.write_bytes(b"fake")
+
+    runtime_config = build_runtime_config(source_config, weights, tmp_path)
+
+    assert runtime_config != source_config
+    text = runtime_config.read_text(encoding="utf-8")
+    assert "load_weights_dir: /remote/training/path" not in text
+    assert f'load_weights_dir: "{weights.parent.as_posix()}"' in text
+    assert "model:\n  name: dap" in text
+
+
+def test_dap_runner_forces_utf8_for_windows_subprocess_output(monkeypatch):
+    monkeypatch.setenv("DAP_DEVICE", "cuda")
+
+    env = build_subprocess_env()
+
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PYTHONUTF8"] == "1"
+    assert env["CUDA_VISIBLE_DEVICES"] == "0"
+
+
+def test_dap_config_reads_depth_scale_from_env(monkeypatch):
+    monkeypatch.setenv("DAP_DEPTH_SCALE", "100")
+
+    config = DapConfig.from_env()
+
+    assert config.depth_scale == 100.0
+
+
+def test_dap_depth_estimator_uses_absolute_image_paths_and_utf8(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    image_path = Path("frame.jpg")
+    image_path.write_bytes(b"fake")
+    repo_dir = tmp_path / "dap"
+    repo_dir.mkdir()
+    weights_path = tmp_path / "weights" / "model.pth"
+    weights_path.parent.mkdir()
+    weights_path.write_bytes(b"fake")
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        image_list = Path(command[command.index("--image-list") + 1])
+        captured["image_path"] = image_list.read_text(encoding="utf-8")
+        output_dir = Path(command[-1])
+        depth_dir = output_dir / "depth_npy"
+        depth_dir.mkdir(parents=True)
+        np.save(depth_dir / "000001.npy", np.array([[0.5]], dtype=np.float32))
+
+    monkeypatch.setattr("omnieye_cloud.dap_adapter.subprocess.run", fake_run)
+    config = DapConfig(
+        repo_dir=repo_dir,
+        weights_path=weights_path,
+        device="cuda",
+        python_executable=Path("python"),
+        depth_scale=100.0,
+    )
+
+    depth = DapDepthEstimator(config=config).infer_depth(image_path)
+
+    assert depth.tolist() == [[50.0]]
+    assert Path(captured["image_path"]).is_absolute()
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
+
+
+def test_analysis_service_can_restart_after_stop(tmp_path):
+    service = AnalysisService(upload_dir=tmp_path, interval_s=999)
+
+    service.start()
+    service.stop()
+    service.start()
+
+    try:
+        assert service._thread is not None
+        assert service._thread.is_alive()
+    finally:
+        service.stop()

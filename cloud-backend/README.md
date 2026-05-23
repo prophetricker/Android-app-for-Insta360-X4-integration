@@ -46,14 +46,13 @@ DAP and model weights stay outside this Git repository.
 git clone https://github.com/Insta360-Research-Team/DAP D:\Models\DAP
 ```
 
-Create a separate Python environment for DAP, because the current repo Python may not match DAP's tested stack.
+Create a separate Python environment for DAP, because the current repo Python may not match DAP's tested stack. On the current Windows dev machine, the working environment lives outside Git at `D:\MyProject\Bohack2\.tooling\dap-venv`.
 
 ```powershell
-conda create -n dap python=3.12
-conda activate dap
-cd D:\Models\DAP
-pip install torch==2.7.1 torchvision==0.22.1
-pip install -r requirements.txt
+D:\MyProject\Bohack2\.tooling\python312\python.exe -m venv D:\MyProject\Bohack2\.tooling\dap-venv
+D:\MyProject\Bohack2\.tooling\dap-venv\Scripts\python.exe -m pip install -r D:\Models\DAP\requirements.txt
+D:\MyProject\Bohack2\.tooling\dap-venv\Scripts\python.exe -m pip install --force-reinstall torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu128
+D:\MyProject\Bohack2\.tooling\dap-venv\Scripts\python.exe -m pip install pillow==10.4.0 MarkupSafe==2.1.5
 ```
 
 Download the pretrained model from:
@@ -66,13 +65,14 @@ Set environment variables before starting `cloud-backend`:
 
 ```powershell
 $env:DAP_REPO_DIR = "D:\Models\DAP"
-$env:DAP_WEIGHTS_PATH = "D:\Models\DAP-weights\model.pth"
+$env:DAP_WEIGHTS_PATH = "D:\Models\DAP-weights-repo\model.pth"
 $env:DAP_DEVICE = "cuda"
-$env:DAP_PYTHON = "D:\Miniconda\envs\dap\python.exe"
+$env:DAP_PYTHON = "D:\MyProject\Bohack2\.tooling\dap-venv\Scripts\python.exe"
+$env:DAP_DEPTH_SCALE = "100"
 python -m uvicorn omnieye_cloud.main:app --app-dir cloud-backend --host 0.0.0.0 --port 8000
 ```
 
-The backend invokes DAP as an external runner and reads DAP's generated `depth_npy\000001.npy`.
+The backend invokes DAP as an external runner and reads DAP's generated `depth_npy\000001.npy`. DAP's public inference output is normalized to the 0-1 range used by its 100m training/evaluation setup, so the backend multiplies by `DAP_DEPTH_SCALE` before applying meter thresholds. Keep the default at `100` for the MVP and tune it during real-world calibration.
 
 ## Android contract
 
@@ -108,11 +108,10 @@ else   -> 0
 ## Tests
 
 ```powershell
-$env:PYTEST_DEBUG_TEMPROOT = "D:\MyProject\Bohack2\OmniEye-Mobile\.pytest_tmp"
-python -m pytest cloud-backend
+python -m pytest cloud-backend -q --basetemp D:\MyProject\Bohack2\.pytest_tmp_repo -p no:cacheprovider
 ```
 
-`PYTEST_DEBUG_TEMPROOT` avoids local Windows temp-directory permission issues observed on this machine.
+`--basetemp` avoids local Windows temp-directory permission issues observed on this machine.
 
 ## Git branch
 
