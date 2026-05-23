@@ -10,6 +10,7 @@ local.properties
 __pycache__/
 .pytest_cache/
 .venv/
+.worktrees/
 models/
 dap_weights/
 uploads/
