@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#6200EE"
+        android:pathData="M24,2
+                         A22,22 0 1,0 24,46
+                         A22,22 0 1,0 24,2
+                         Z"/>
+
+    <!-- Eye shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,14
+                         C15,14 8,24 8,24
+                         C8,24 15,34 24,34
+                         C33,34 40,24 40,24
+                         C40,24 33,14 24,14
+                         Z"/>
+
+    <!-- Pupil -->
+    <path
+        android:fillColor="#6200EE"
+        android:pathData="M24,19
+                         A5,5 0 1,1 24,29
+                         A5,5 0 1,1 24,19
+                         Z"/>
+</vector>
