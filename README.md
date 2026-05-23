@@ -27,6 +27,18 @@ python -m uvicorn mobile-backend.app:app --host 0.0.0.0 --port 8000
 
 Expose the local service to the phone with a public tunnel such as ngrok, Cloudflare Tunnel, or Tailscale Funnel.
 
+## DAP Cloud Backend
+
+The DAP-first backend lives in `cloud-backend/`. It keeps the Android `/analyze` contract from `mobile-backend` but runs as the cloud-facing service for the current MVP.
+
+```powershell
+python -m pip install -r cloud-backend\requirements.txt
+python -m pytest cloud-backend
+python -m uvicorn omnieye_cloud.main:app --app-dir cloud-backend --host 0.0.0.0 --port 8000
+```
+
+DAP source, weights, device, and optional interpreter are configured through `DAP_REPO_DIR`, `DAP_WEIGHTS_PATH`, `DAP_DEVICE`, and `DAP_PYTHON`; they should stay outside Git.
+
 ## Android Build
 
 The project includes a Gradle wrapper copied from the local Insta360 SDK demo:
