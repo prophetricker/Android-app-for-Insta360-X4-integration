@@ -126,8 +126,7 @@ fun MainScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                elevation = 0.dp
+                )
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

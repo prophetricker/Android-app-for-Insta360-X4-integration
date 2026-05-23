@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.omniveye.app.ui.screens.MainScreen
 import com.omniveye.app.ui.theme.OmniEyeTheme
+import com.omniveye.app.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             if (volumeDownStartTime == 0L) {
                 volumeDownStartTime = System.currentTimeMillis()
-                viewModel.startRecording()
+                viewModel.startListening()
             }
             return true
         }
@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
             if (volumeDownStartTime != 0L) {
                 val pressDuration = System.currentTimeMillis() - volumeDownStartTime
                 if (pressDuration >= longPressThreshold) {
-                    viewModel.stopRecording()
+                    viewModel.stopListening()
                 }
                 volumeDownStartTime = 0L
             }
