@@ -37,6 +37,14 @@ The project includes a Gradle wrapper copied from the local Insta360 SDK demo:
 
 This requires JDK 17 and Android SDK/Build Tools. On this machine, the current blocker is that `JAVA_HOME` is not set and `java.exe` is not in `PATH`.
 
+Before setting `JAVA_HOME`, verify the target path exists:
+
+```powershell
+Test-Path "C:\Program Files\Android\Android Studio\jbr\bin\java.exe"
+```
+
+If that returns `False`, Android Studio or JDK 17 is not installed at that path. Install Android Studio, or install a JDK 17 distribution, then set `JAVA_HOME` to the directory that contains `bin\java.exe`.
+
 Create `local.properties` from `local.properties.example` before resolving Android dependencies. Put your Android SDK path and the Insta360 Maven credentials from the official SDK demo/package in that local file, or set `INSTA360_MAVEN_USERNAME` and `INSTA360_MAVEN_PASSWORD` in the environment.
 
 ## Local SDK Reference
