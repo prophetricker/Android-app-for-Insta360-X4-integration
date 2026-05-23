@@ -1,0 +1,9 @@
+# Copy this file to local.properties on your machine.
+# local.properties is intentionally ignored by Git.
+
+# Android SDK path, for example:
+# sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+
+# Insta360 Android SDK Maven credentials from the official SDK package/demo.
+insta360.maven.username=<username>
+insta360.maven.password=<password>

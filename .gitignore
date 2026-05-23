@@ -1,0 +1,17 @@
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+.idea/
+.DS_Store
+__pycache__/
+.pytest_cache/
+.venv/
+models/
+dap_weights/
+uploads/
+mobile-backend/uploads/
+*.jsonl
