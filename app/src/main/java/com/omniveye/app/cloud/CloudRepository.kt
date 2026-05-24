@@ -6,15 +6,10 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.io.File
 import java.util.concurrent.TimeUnit
 
 sealed class CloudState {
@@ -37,7 +32,7 @@ class CloudRepository(private val context: Context) {
     companion object {
         private const val TAG = "CloudRepository"
         private const val TIMEOUT_SECONDS = 60L
-        private const val USE_MOCK = true
+        private const val USE_MOCK = false
     }
 
     private val _state = MutableStateFlow<CloudState>(CloudState.Idle)
@@ -60,15 +55,6 @@ class CloudRepository(private val context: Context) {
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
-            .addInterceptor { chain ->
-                val original = chain.request()
-                val request = original.newBuilder()
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .method(original.method, original.body)
-                    .build()
-                chain.proceed(request)
-            }
             .build()
 
         val retrofit = Retrofit.Builder()
@@ -95,11 +81,17 @@ class CloudRepository(private val context: Context) {
                 )
             } else {
                 val response = apiService.healthCheck()
-                if (response.isSuccessful && response.body()?.code == 0) {
+                if (response.isSuccessful && response.body()?.ok == true) {
                     _state.value = CloudState.Connected
-                    CloudResult.Success(response.body()!!.data!!)
+                    CloudResult.Success(
+                        HealthCheckResponse(
+                            status = "healthy",
+                            timestamp = System.currentTimeMillis().toString(),
+                            services = mapOf("cloud-backend" to "ok")
+                        )
+                    )
                 } else {
-                    throw Exception(response.body()?.message ?: "Health check failed")
+                    throw Exception("Health check failed")
                 }
             }
         } catch (e: Exception) {
@@ -143,6 +135,30 @@ class CloudRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Upload failed", e)
             _state.value = CloudState.Error("Upload failed: ${e.message}")
+            CloudResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun analyzeFrame(bitmap: Bitmap): CloudResult<AnalyzeResponse> {
+        return try {
+            _state.value = CloudState.Uploading(0)
+
+            val file = imageUploadManager.prepareForUpload(bitmap)
+            val framePart = createAnalyzeFramePart(file)
+
+            _state.value = CloudState.Processing("云端 DAP 正在分析...")
+            val response = apiService.analyzeFrame(framePart)
+
+            if (response.isSuccessful && response.body() != null) {
+                val analyzeResponse = response.body()!!
+                _state.value = CloudState.Success(analyzeResponse)
+                CloudResult.Success(analyzeResponse)
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Analyze failed")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Analyze failed", e)
+            _state.value = CloudState.Error("Analyze failed: ${e.message}")
             CloudResult.Error(e.message ?: "Unknown error")
         }
     }

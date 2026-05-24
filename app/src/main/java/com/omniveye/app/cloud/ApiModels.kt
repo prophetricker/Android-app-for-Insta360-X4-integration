@@ -39,6 +39,19 @@ data class ImageProcessResult(
     val processedAt: String?
 )
 
+data class AnalyzeResponse(
+    @SerializedName("distance_m")
+    val distanceM: Double,
+    @SerializedName("level")
+    val level: Int,
+    @SerializedName("confidence")
+    val confidence: Double,
+    @SerializedName("scene_text")
+    val sceneText: String,
+    @SerializedName("latency_ms")
+    val latencyMs: Int
+)
+
 data class VoiceProcessRequest(
     @SerializedName("text")
     val text: String,
@@ -92,4 +105,9 @@ data class HealthCheckResponse(
     val timestamp: String,
     @SerializedName("services")
     val services: Map<String, String>?
+)
+
+data class BackendHealthResponse(
+    @SerializedName("ok")
+    val ok: Boolean
 )

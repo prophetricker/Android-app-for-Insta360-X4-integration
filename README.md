@@ -22,6 +22,26 @@ Android App for Insta360 X4 Camera Integration with AI Voice Assistant
 2. Open in Android Studio
 3. Build and run on your device
 
+## Roadshow Demo
+
+This branch wires the Android app directly to the DAP-first FastAPI backend.
+
+Start the backend:
+
+```powershell
+python -m uvicorn omnieye_cloud.main:app --app-dir cloud-backend --host 0.0.0.0 --port 8000
+```
+
+Build the Android app with the backend URL:
+
+```powershell
+gradle.bat assembleDebug -PCLOUD_BASE_URL="https://your-tunnel.example/"
+```
+
+The default URL is `http://10.0.2.2:8000/`, which is only useful for an Android emulator. For a real phone, use an HTTPS tunnel such as Cloudflare Tunnel, ngrok, or Tailscale Funnel.
+
+When the phone is not connected to an Insta360 X4, the capture button sends a generated roadshow frame so the upload, cloud analysis, Chinese TTS, and vibration loop can still be demonstrated.
+
 ## Permissions
 
 - WiFi permissions (camera connection)

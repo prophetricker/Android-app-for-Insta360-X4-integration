@@ -169,12 +169,12 @@ fun MainScreen(
             )
 
             AnimatedVisibility(
-                visible = uiState.imageProcessResult != null,
+                visible = uiState.analyzeResult != null,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                uiState.imageProcessResult?.let { result ->
-                    ImageProcessResultCard(result)
+                uiState.analyzeResult?.let { result ->
+                    AnalyzeResultCard(result)
                 }
             }
 
@@ -252,7 +252,7 @@ fun PhotoCaptureCard(
 
             Button(
                 onClick = onCaptureClick,
-                enabled = isConnected && !isLoading,
+                enabled = !isLoading,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryBlue,
@@ -273,7 +273,10 @@ fun PhotoCaptureCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("拍照", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        if (isConnected) "拍照" else "演示",
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
         }
@@ -383,8 +386,8 @@ fun VoiceInputSection(
 }
 
 @Composable
-fun ImageProcessResultCard(
-    result: com.omniveye.app.cloud.ImageProcessResult,
+fun AnalyzeResultCard(
+    result: com.omniveye.app.cloud.AnalyzeResponse,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -412,38 +415,25 @@ fun ImageProcessResultCard(
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "图像分析结果",
+                text = "云端避障分析",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
         }
 
-        result.sceneDescription?.let {
-            ResultCard(
-                title = "场景描述",
-                content = it
-            )
-        }
+        ResultCard(
+            title = "中文提醒",
+            content = result.sceneText
+        )
 
-        result.recognizedText?.let {
-            ResultCard(
-                title = "识别文字",
-                content = it
+        ResultCard(
+            title = "距离与风险",
+            content = "前方约 %.2f 米，风险等级 %d，置信度 %.0f%%，云端耗时 %d ms".format(
+                result.distanceM,
+                result.level,
+                result.confidence * 100,
+                result.latencyMs
             )
-        }
-
-        result.objectsDetected?.takeIf { it.isNotEmpty() }?.let { objects ->
-            ResultCard(
-                title = "检测物体",
-                content = objects.joinToString(", ")
-            )
-        }
-
-        result.ocrText?.let {
-            ResultCard(
-                title = "OCR文字",
-                content = it
-            )
-        }
+        )
     }
 }

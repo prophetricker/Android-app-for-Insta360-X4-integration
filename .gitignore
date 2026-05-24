@@ -20,6 +20,14 @@ out/
 .gradle/
 build/
 
+# Python backend local artifacts
+__pycache__/
+.pytest_cache/
+.pytest_tmp*/
+*.pyc
+cloud-backend/uploads/
+cloud-backend/**/__pycache__/
+
 # Local configuration file (sdk path, etc)
 local.properties
 

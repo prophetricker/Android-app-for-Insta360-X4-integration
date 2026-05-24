@@ -14,6 +14,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
+fun createAnalyzeFramePart(file: File): MultipartBody.Part {
+    val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+    return MultipartBody.Part.createFormData("frame", file.name, requestFile)
+}
+
 class ImageUploadManager(private val context: Context) {
 
     companion object {

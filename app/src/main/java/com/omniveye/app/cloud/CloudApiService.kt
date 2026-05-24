@@ -1,5 +1,6 @@
 package com.omniveye.app.cloud
 
+import com.omniveye.app.BuildConfig
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
@@ -8,7 +9,13 @@ import retrofit2.http.*
 interface CloudApiService {
 
     @GET("health")
-    suspend fun healthCheck(): Response<ApiResponse<HealthCheckResponse>>
+    suspend fun healthCheck(): Response<BackendHealthResponse>
+
+    @Multipart
+    @POST("analyze")
+    suspend fun analyzeFrame(
+        @Part frame: MultipartBody.Part
+    ): Response<AnalyzeResponse>
 
     @Multipart
     @POST("v1/image/upload")
@@ -50,9 +57,10 @@ interface CloudApiService {
 }
 
 object CloudEndpoints {
-    const val BASE_URL = "https://api.omniveye.example.com/"
+    const val BASE_URL = BuildConfig.CLOUD_BASE_URL
 
     const val ENDPOINT_HEALTH = "health"
+    const val ENDPOINT_ANALYZE = "analyze"
     const val ENDPOINT_IMAGE_UPLOAD = "v1/image/upload"
     const val ENDPOINT_IMAGE_STATUS = "v1/image/{imageId}"
     const val ENDPOINT_IMAGE_RESULT = "v1/image/{imageId}/result"

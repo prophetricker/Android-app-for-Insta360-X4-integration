@@ -2,15 +2,24 @@ package com.omniveye.app.viewmodel
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.omniveye.app.camera.CameraConnectionState
 import com.omniveye.app.camera.CameraManager
+import com.omniveye.app.cloud.AnalyzeResponse
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
-import com.omniveye.app.cloud.ImageProcessResult
 import com.omniveye.app.cloud.VoiceProcessResponse
+import com.omniveye.app.feedback.shouldVibrateForLevel
+import com.omniveye.app.feedback.vibrationDurationMs
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.speech.SpeechToTextManager
 import com.omniveye.app.speech.TtsState
@@ -33,7 +42,7 @@ data class MainUiState(
     val recognizedText: String = "",
     val processedResult: String = "",
     val currentTtsText: String = "",
-    val imageProcessResult: ImageProcessResult? = null,
+    val analyzeResult: AnalyzeResponse? = null,
     val lastCapturedBitmap: Bitmap? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
@@ -46,6 +55,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val speechToTextManager = SpeechToTextManager(application)
     private val textToSpeechManager = TextToSpeechManager(application)
     private val cloudRepository = CloudRepository(application)
+    private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        application.getSystemService(VibratorManager::class.java)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        application.getSystemService(Vibrator::class.java)
+    }
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -72,7 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(cameraState = state) }
                 when (state) {
                     is com.omniveye.app.camera.CameraConnectionState.Connected -> {
-                        startAutoCapture()
+                        stopAutoCapture()
                     }
                     is com.omniveye.app.camera.CameraConnectionState.Disconnected -> {
                         stopAutoCapture()
@@ -148,6 +163,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
+            if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
+                uploadImage(createRoadshowDemoFrame())
+                return@launch
+            }
+
             val result = cameraManager.takePhoto()
             when (result) {
                 is com.omniveye.app.camera.CameraOperationResult.Success -> {
@@ -185,34 +205,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, lastCapturedBitmap = bitmap) }
 
-            when (val uploadResult = cloudRepository.uploadImage(bitmap)) {
+            when (val result = cloudRepository.analyzeFrame(bitmap)) {
                 is CloudResult.Success -> {
-                    processImage(uploadResult.data.imageId)
-                }
-                is CloudResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = uploadResult.message
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private fun processImage(imageId: String) {
-        viewModelScope.launch {
-            when (val result = cloudRepository.processImage(imageId)) {
-                is CloudResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            imageProcessResult = result.data,
-                            processedResult = result.data.sceneDescription ?: result.data.recognizedText ?: ""
-                        )
-                    }
-                    speakResult(result.data.sceneDescription ?: result.data.recognizedText ?: "")
+                    handleAnalyzeResult(result.data)
                 }
                 is CloudResult.Error -> {
                     _uiState.update {
@@ -224,6 +219,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    private fun handleAnalyzeResult(result: AnalyzeResponse) {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                analyzeResult = result,
+                processedResult = result.sceneText
+            )
+        }
+        vibrateForLevel(result.level)
+        speakResult(result.sceneText)
     }
 
     fun startListening() {
@@ -263,6 +270,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (result.isNotBlank()) {
             textToSpeechManager.speak(result)
         }
+    }
+
+    private fun vibrateForLevel(level: Int) {
+        if (!shouldVibrateForLevel(level)) return
+
+        val durationMs = vibrationDurationMs(level)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(
+                VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(durationMs)
+        }
+    }
+
+    private fun createRoadshowDemoFrame(): Bitmap {
+        val bitmap = Bitmap.createBitmap(1024, 512, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        paint.color = Color.rgb(35, 45, 55)
+        canvas.drawRect(0f, 0f, 1024f, 280f, paint)
+        paint.color = Color.rgb(95, 105, 85)
+        canvas.drawRect(0f, 280f, 1024f, 512f, paint)
+        paint.color = Color.rgb(160, 80, 70)
+        canvas.drawRect(430f, 230f, 590f, 500f, paint)
+        paint.color = Color.WHITE
+        paint.textSize = 36f
+        canvas.drawText("OmniEye Roadshow Frame", 320f, 80f, paint)
+
+        return bitmap
     }
 
     fun speakText(text: String) {

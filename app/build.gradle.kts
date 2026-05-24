@@ -5,14 +5,16 @@ plugins {
 
 android {
     namespace = "com.omniveye.app"
-    compileSdk = 34
+    compileSdk = 35
+    buildToolsVersion = "35.0.0"
 
     defaultConfig {
         applicationId = "com.omniveye.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        buildConfigField("String", "CLOUD_BASE_URL", "\"${providers.gradleProperty("CLOUD_BASE_URL").orElse("http://10.0.2.2:8000/").get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -41,6 +43,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
