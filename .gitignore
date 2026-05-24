@@ -83,3 +83,6 @@ gradle/wrapper/gradle-wrapper.jar
 
 # Captures folder for UI tests
 captures/
+
+# Insta360 SDK (contains proprietary libraries)
+Insta360 X4 SDK/

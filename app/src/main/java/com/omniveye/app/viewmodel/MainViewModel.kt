@@ -9,7 +9,6 @@ import com.omniveye.app.camera.CameraManager
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
-import com.omniveye.app.cloud.ImageProcessResult
 import com.omniveye.app.cloud.VoiceProcessResponse
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.speech.SpeechToTextManager
@@ -33,11 +32,13 @@ data class MainUiState(
     val recognizedText: String = "",
     val processedResult: String = "",
     val currentTtsText: String = "",
-    val imageProcessResult: ImageProcessResult? = null,
     val lastCapturedBitmap: Bitmap? = null,
+    val lastSavedPhotoPath: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val autoCaptureEnabled: Boolean = false
+    val autoCaptureEnabled: Boolean = false,
+    val autoCaptureIntervalMs: Long = 500,
+    val totalPhotosCaptured: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,9 +72,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             cameraManager.connectionState.collect { state ->
                 _uiState.update { it.copy(cameraState = state) }
                 when (state) {
-                    is com.omniveye.app.camera.CameraConnectionState.Connected -> {
-                        startAutoCapture()
-                    }
+                is com.omniveye.app.camera.CameraConnectionState.Connected -> {
+                    // 相机已连接，但不自动开始拍摄，等待用户手动操作
+                }
                     is com.omniveye.app.camera.CameraConnectionState.Disconnected -> {
                         stopAutoCapture()
                     }
@@ -127,18 +128,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cameraManager.checkCameraWiFiConnection()
     }
 
-    private fun startAutoCapture() {
+    fun startAutoCapture() {
+        if (_uiState.value.autoCaptureEnabled) return
         autoCaptureJob?.cancel()
         autoCaptureJob = viewModelScope.launch {
-            _uiState.update { it.copy(autoCaptureEnabled = true) }
+            _uiState.update { it.copy(autoCaptureEnabled = true, totalPhotosCaptured = 0) }
             while (isActive) {
-                capturePhoto()
-                delay(500)
+                capturePhotoAndUpload()
+                delay(_uiState.value.autoCaptureIntervalMs)
             }
         }
     }
 
-    private fun stopAutoCapture() {
+    fun toggleAutoCapture() {
+        if (_uiState.value.autoCaptureEnabled) {
+            stopAutoCapture()
+        } else {
+            startAutoCapture()
+        }
+    }
+
+    fun stopAutoCapture() {
         autoCaptureJob?.cancel()
         autoCaptureJob = null
         _uiState.update { it.copy(autoCaptureEnabled = false) }
@@ -151,7 +161,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = cameraManager.takePhoto()
             when (result) {
                 is com.omniveye.app.camera.CameraOperationResult.Success -> {
-                    fetchAndUploadLatestPhoto()
+                    val bitmap = cameraManager.lastPhotoBitmap.value
+                    val savedPath = cameraManager.lastSavedPhotoPath.value
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            lastCapturedBitmap = bitmap,
+                            lastSavedPhotoPath = savedPath,
+                            totalPhotosCaptured = it.totalPhotosCaptured + 1
+                        )
+                    }
                 }
                 is com.omniveye.app.camera.CameraOperationResult.Error -> {
                     _uiState.update {
@@ -165,17 +184,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun fetchAndUploadLatestPhoto() {
+    private fun capturePhotoAndUpload() {
         viewModelScope.launch {
-            val bitmap = cameraManager.lastPhotoBitmap.value
-            if (bitmap != null) {
-                uploadImage(bitmap)
-            } else {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "No photo captured"
-                    )
+            val result = cameraManager.takePhoto()
+            when (result) {
+                is com.omniveye.app.camera.CameraOperationResult.Success -> {
+                    val bitmap = cameraManager.lastPhotoBitmap.value
+                    val savedPath = cameraManager.lastSavedPhotoPath.value
+                    _uiState.update {
+                        it.copy(
+                            lastCapturedBitmap = bitmap,
+                            lastSavedPhotoPath = savedPath,
+                            totalPhotosCaptured = it.totalPhotosCaptured + 1
+                        )
+                    }
+                }
+                is com.omniveye.app.camera.CameraOperationResult.Error -> {
+                    _uiState.update { it.copy(errorMessage = result.message) }
                 }
             }
         }
@@ -187,7 +212,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             when (val uploadResult = cloudRepository.uploadImage(bitmap)) {
                 is CloudResult.Success -> {
-                    processImage(uploadResult.data.imageId)
+                    _uiState.update { it.copy(isLoading = false) }
+                    // Image uploaded successfully, algorithm processing placeholder
+                    _uiState.update {
+                        it.copy(processedResult = "图片上传成功，等待云端处理...")
+                    }
                 }
                 is CloudResult.Error -> {
                     _uiState.update {
@@ -201,29 +230,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun processImage(imageId: String) {
-        viewModelScope.launch {
-            when (val result = cloudRepository.processImage(imageId)) {
-                is CloudResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            imageProcessResult = result.data,
-                            processedResult = result.data.sceneDescription ?: result.data.recognizedText ?: ""
-                        )
-                    }
-                    speakResult(result.data.sceneDescription ?: result.data.recognizedText ?: "")
-                }
-                is CloudResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
-            }
-        }
+    fun setAutoCaptureInterval(intervalMs: Long) {
+        _uiState.update { it.copy(autoCaptureIntervalMs = intervalMs) }
     }
 
     fun startListening() {

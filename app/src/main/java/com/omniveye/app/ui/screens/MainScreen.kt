@@ -3,9 +3,6 @@ package com.omniveye.app.ui.screens
 import android.Manifest
 import android.content.Context
 import android.net.wifi.WifiManager
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,12 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,7 +53,6 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.omniveye.app.camera.CameraConnectionState
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.ui.components.CameraStatusCard
-import com.omniveye.app.ui.components.ResultCard
 import com.omniveye.app.ui.components.VoiceInputButton
 import com.omniveye.app.ui.components.VoiceOutputDisplay
 import com.omniveye.app.ui.theme.Background
@@ -154,12 +148,6 @@ fun MainScreen(
                 onDisconnectClick = { viewModel.disconnectCamera() }
             )
 
-            PhotoCaptureCard(
-                isConnected = uiState.cameraState is CameraConnectionState.Connected,
-                isLoading = uiState.isLoading,
-                onCaptureClick = { viewModel.capturePhoto() }
-            )
-
             VoiceInputSection(
                 recognitionState = uiState.speechRecognitionState,
                 hasAudioPermission = audioPermissionState.status.isGranted,
@@ -167,16 +155,6 @@ fun MainScreen(
                 onStartListening = { viewModel.startListening() },
                 onStopListening = { viewModel.stopListening() }
             )
-
-            AnimatedVisibility(
-                visible = uiState.imageProcessResult != null,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                uiState.imageProcessResult?.let { result ->
-                    ImageProcessResultCard(result)
-                }
-            }
 
             VoiceOutputDisplay(
                 text = uiState.processedResult.ifBlank { uiState.currentTtsText },
@@ -193,91 +171,6 @@ fun MainScreen(
 private fun checkWifiEnabled(context: Context): Boolean {
     val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     return wifiManager.isWifiEnabled
-}
-
-@Composable
-fun PhotoCaptureCard(
-    isConnected: Boolean,
-    isLoading: Boolean,
-    onCaptureClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(PrimaryBlueLight.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Photo,
-                        contentDescription = null,
-                        tint = PrimaryBlue,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "图像处理",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "拍摄或获取相机图片",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Button(
-                onClick = onCaptureClick,
-                enabled = isConnected && !isLoading,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
-                    disabledContainerColor = PrimaryBlue.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier.height(44.dp)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("拍照", style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -378,72 +271,6 @@ fun VoiceInputSection(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun ImageProcessResultCard(
-    result: com.omniveye.app.cloud.ImageProcessResult,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(PrimaryBlueLight.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = null,
-                    tint = PrimaryBlue,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = "图像分析结果",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        result.sceneDescription?.let {
-            ResultCard(
-                title = "场景描述",
-                content = it
-            )
-        }
-
-        result.recognizedText?.let {
-            ResultCard(
-                title = "识别文字",
-                content = it
-            )
-        }
-
-        result.objectsDetected?.takeIf { it.isNotEmpty() }?.let { objects ->
-            ResultCard(
-                title = "检测物体",
-                content = objects.joinToString(", ")
-            )
-        }
-
-        result.ocrText?.let {
-            ResultCard(
-                title = "OCR文字",
-                content = it
-            )
         }
     }
 }

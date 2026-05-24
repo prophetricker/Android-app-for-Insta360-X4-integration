@@ -1,12 +1,16 @@
 package com.omniveye.app.speech
 
+import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,13 +20,17 @@ sealed class SpeechRecognitionState {
     data object Listening : SpeechRecognitionState()
     data object Processing : SpeechRecognitionState()
     data class Result(val text: String) : SpeechRecognitionState()
-    data class Error(val message: String) : SpeechRecognitionState()
+    data class Error(val message: String, val userAction: String? = null) : SpeechRecognitionState()
 }
 
 class SpeechToTextManager(private val context: Context) {
 
     companion object {
         private const val TAG = "SpeechToTextManager"
+
+        // User guidance for different errors
+        private const val ACTION_MIC_PERMISSION = "设置 → 应用 → OmniEye → 权限 → 允许麦克风"
+        private const val ACTION_REBOOT = "请重启设备后再试"
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
@@ -39,26 +47,47 @@ class SpeechToTextManager(private val context: Context) {
     private var isListening = false
 
     fun isAvailable(): Boolean {
-        return SpeechRecognizer.isRecognitionAvailable(context)
+        val available = SpeechRecognizer.isRecognitionAvailable(context)
+        Log.d(TAG, "Speech recognition available: $available")
+        return available
+    }
+
+    fun hasPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     fun initialize() {
         if (!isAvailable()) {
             Log.e(TAG, "Speech recognition not available on this device")
             _recognitionState.value = SpeechRecognitionState.Error(
-                "Speech recognition not available"
+                "此设备不支持语音识别",
+                ACTION_MIC_PERMISSION
+            )
+            return
+        }
+
+        if (!hasPermission()) {
+            Log.e(TAG, "Microphone permission not granted")
+            _recognitionState.value = SpeechRecognitionState.Error(
+                "请授予麦克风权限",
+                ACTION_MIC_PERMISSION
             )
             return
         }
 
         try {
+            // Use default speech recognizer (will use system default or Google if available)
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer?.setRecognitionListener(createRecognitionListener())
             Log.d(TAG, "Speech recognizer initialized")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize speech recognizer", e)
             _recognitionState.value = SpeechRecognitionState.Error(
-                "Failed to initialize: ${e.message}"
+                "初始化失败: ${e.message}",
+                ACTION_REBOOT
             )
         }
     }
@@ -66,8 +95,19 @@ class SpeechToTextManager(private val context: Context) {
     fun startListening() {
         if (!isAvailable()) {
             _recognitionState.value = SpeechRecognitionState.Error(
-                "Speech recognition not available"
+                "语音识别不可用",
+                ACTION_MIC_PERMISSION
             )
+            Log.e(TAG, "Cannot start listening: not available")
+            return
+        }
+
+        if (!hasPermission()) {
+            _recognitionState.value = SpeechRecognitionState.Error(
+                "需要麦克风权限",
+                ACTION_MIC_PERMISSION
+            )
+            Log.e(TAG, "Cannot start listening: no permission")
             return
         }
 
@@ -76,28 +116,56 @@ class SpeechToTextManager(private val context: Context) {
             return
         }
 
+        if (speechRecognizer == null) {
+            initialize()
+            if (speechRecognizer == null) {
+                _recognitionState.value = SpeechRecognitionState.Error(
+                    "语音识别初始化失败",
+                    ACTION_REBOOT
+                )
+                return
+            }
+        }
+
         _recognitionState.value = SpeechRecognitionState.Listening
         _partialText.value = ""
         _recognizedText.value = ""
         isListening = true
 
         val intent = createRecognizerIntent()
-        speechRecognizer?.startListening(intent)
-        Log.d(TAG, "Started listening...")
+        try {
+            speechRecognizer?.startListening(intent)
+            Log.d(TAG, "Started listening...")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start listening", e)
+            isListening = false
+            _recognitionState.value = SpeechRecognitionState.Error(
+                "启动失败: ${e.message}",
+                ACTION_REBOOT
+            )
+        }
     }
 
     fun stopListening() {
         if (!isListening) return
 
         isListening = false
-        speechRecognizer?.stopListening()
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping listening", e)
+        }
         _recognitionState.value = SpeechRecognitionState.Processing
         Log.d(TAG, "Stopped listening")
     }
 
     fun destroy() {
         isListening = false
-        speechRecognizer?.destroy()
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error destroying recognizer", e)
+        }
         speechRecognizer = null
         Log.d(TAG, "Speech recognizer destroyed")
     }
@@ -108,9 +176,9 @@ class SpeechToTextManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
     }
 
@@ -125,7 +193,7 @@ class SpeechToTextManager(private val context: Context) {
             }
 
             override fun onRmsChanged(rmsdB: Float) {
-                // Audio level changed - can be used for visual feedback
+                Log.d(TAG, "Audio level: $rmsdB dB")
             }
 
             override fun onBufferReceived(buffer: ByteArray?) {
@@ -140,20 +208,58 @@ class SpeechToTextManager(private val context: Context) {
 
             override fun onError(error: Int) {
                 isListening = false
-                val errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                    SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
-                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech recognized"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognition service busy"
-                    SpeechRecognizer.ERROR_SERVER -> "Server error"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
-                    else -> "Unknown error"
+                val (errorMessage, userAction) = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> Pair(
+                        "音频录制错误 - 请检查麦克风是否被其他应用占用",
+                        ACTION_MIC_PERMISSION
+                    )
+                    SpeechRecognizer.ERROR_CLIENT -> Pair(
+                        "客户端错误 - 请重启应用",
+                        ACTION_REBOOT
+                    )
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> Pair(
+                        "权限不足 - 请检查麦克风权限",
+                        ACTION_MIC_PERMISSION
+                    )
+                    SpeechRecognizer.ERROR_NETWORK -> Pair(
+                        "网络错误 - 请检查网络连接",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> Pair(
+                        "网络超时 - 请重试",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_NO_MATCH -> Pair(
+                        "未识别到语音 - 请对准麦克风说话",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> Pair(
+                        "语音服务忙碌 - 请稍后重试",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_SERVER -> Pair(
+                        "服务器错误 - 请稍后重试",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> Pair(
+                        "未检测到语音输入",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> Pair(
+                        "不支持的语言",
+                        null
+                    )
+                    SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> Pair(
+                        "语言不可用 - 正在下载语音包",
+                        null
+                    )
+                    else -> Pair(
+                        "未知错误 ($error)",
+                        ACTION_REBOOT
+                    )
                 }
                 Log.e(TAG, "Recognition error: $errorMessage (code: $error)")
-                _recognitionState.value = SpeechRecognitionState.Error(errorMessage)
+                _recognitionState.value = SpeechRecognitionState.Error(errorMessage, userAction)
             }
 
             override fun onResults(results: Bundle?) {
@@ -161,6 +267,7 @@ class SpeechToTextManager(private val context: Context) {
                 val recognizedText = matches?.firstOrNull() ?: ""
 
                 Log.d(TAG, "Recognition results: $recognizedText")
+                Log.d(TAG, "All matches: $matches")
                 _recognizedText.value = recognizedText
                 _recognitionState.value = SpeechRecognitionState.Result(recognizedText)
             }
