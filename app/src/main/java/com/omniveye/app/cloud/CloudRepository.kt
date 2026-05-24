@@ -26,6 +26,10 @@ sealed class CloudResult<out T> {
     data class Error(val message: String) : CloudResult<Nothing>()
 }
 
+fun shouldRequireCellularRoute(isCameraFrame: Boolean): Boolean {
+    return isCameraFrame
+}
+
 class CloudRepository(private val context: Context) {
 
     companion object {
@@ -156,10 +160,10 @@ class CloudRepository(private val context: Context) {
         }
     }
 
-    suspend fun analyzeFrame(bitmap: Bitmap): CloudResult<AnalyzeResponse> {
+    suspend fun analyzeFrame(bitmap: Bitmap, isCameraFrame: Boolean = false): CloudResult<AnalyzeResponse> {
         return try {
             _state.value = CloudState.Uploading(0)
-            if (!waitForCellularRoute()) {
+            if (shouldRequireCellularRoute(isCameraFrame) && !waitForCellularRoute()) {
                 throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
             }
 

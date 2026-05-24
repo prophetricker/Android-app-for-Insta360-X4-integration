@@ -186,7 +186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(isLoading = true) }
 
             if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
-                uploadImage(createRoadshowDemoFrame())
+                uploadImage(createRoadshowDemoFrame(), isCameraFrame = false)
                 return@launch
             }
 
@@ -211,7 +211,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val bitmap = cameraManager.lastPhotoBitmap.value
             if (bitmap != null) {
-                uploadImage(bitmap)
+                uploadImage(bitmap, isCameraFrame = true)
             } else {
                 _uiState.update {
                     it.copy(
@@ -223,11 +223,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun uploadImage(bitmap: Bitmap) {
+    fun uploadImage(bitmap: Bitmap, isCameraFrame: Boolean = false) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, lastCapturedBitmap = bitmap) }
 
-            when (val result = cloudRepository.analyzeFrame(bitmap)) {
+            when (val result = cloudRepository.analyzeFrame(bitmap, isCameraFrame)) {
                 is CloudResult.Success -> {
                     handleAnalyzeResult(result.data)
                 }
