@@ -91,3 +91,26 @@ gradle/wrapper/gradle-wrapper.jar
 
 # Captures folder for UI tests
 captures/
+
+# Proprietary SDKs and downloaded archives
+.sdk_extract/
+Insta360 X4 SDK/
+赛事SDK包*/
+*CameraSDK*/
+*MediaSDK*/
+*.rar
+*.7z
+*.zip
+
+# Model repositories and weights
+DAP/
+DAP-weights*/
+models/
+*.pth
+*.onnx
+*.ckpt
+*.safetensors
+*.npy
+
+# Local developer tooling downloaded outside Gradle
+.tooling/

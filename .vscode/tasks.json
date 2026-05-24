@@ -1,0 +1,139 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "android: test debug unit",
+      "type": "shell",
+      "command": "C:\\Users\\EZ\\.gradle\\wrapper\\dists\\gradle-8.11.1-bin\\7800bkpvjdl6wgx6vnys98319\\gradle-8.11.1\\bin\\gradle.bat",
+      "args": ["testDebugUnitTest", "--no-daemon"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "D:\\MyProject\\Bohack2\\.tooling\\jdk17\\jdk-17.0.19+10",
+          "ANDROID_HOME": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk",
+          "ANDROID_SDK_ROOT": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk"
+        }
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "android: assemble debug",
+      "type": "shell",
+      "command": "C:\\Users\\EZ\\.gradle\\wrapper\\dists\\gradle-8.11.1-bin\\7800bkpvjdl6wgx6vnys98319\\gradle-8.11.1\\bin\\gradle.bat",
+      "args": ["assembleDebug", "--no-daemon"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "JAVA_HOME": "D:\\MyProject\\Bohack2\\.tooling\\jdk17\\jdk-17.0.19+10",
+          "ANDROID_HOME": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk",
+          "ANDROID_SDK_ROOT": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "android: install debug apk",
+      "type": "shell",
+      "command": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk\\platform-tools\\adb.exe",
+      "args": ["install", "-r", "${workspaceFolder}\\app\\build\\outputs\\apk\\debug\\app-debug.apk"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": ["android: assemble debug"],
+      "problemMatcher": []
+    },
+    {
+      "label": "android: devices",
+      "type": "shell",
+      "command": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk\\platform-tools\\adb.exe",
+      "args": ["devices", "-l"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "android: logcat omnieye",
+      "type": "shell",
+      "command": "D:\\MyProject\\Bohack2\\.tooling\\android-sdk\\platform-tools\\adb.exe",
+      "args": ["logcat", "-s", "CameraManager", "CloudRepository", "CellularNetworkProvider", "MainViewModel"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: run local",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m",
+        "uvicorn",
+        "omnieye_cloud.main:app",
+        "--app-dir",
+        "cloud-backend",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "DAP_REPO_DIR": "D:\\Models\\DAP",
+          "DAP_WEIGHTS_PATH": "D:\\Models\\DAP-weights-repo\\model.pth",
+          "DAP_DEVICE": "cuda",
+          "DAP_PYTHON": "D:\\MyProject\\Bohack2\\.tooling\\dap-venv\\Scripts\\python.exe",
+          "DAP_DEPTH_SCALE": "100",
+          "PYTHONIOENCODING": "utf-8"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: test",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-m",
+        "pytest",
+        "cloud-backend",
+        "-q",
+        "--basetemp",
+        "D:\\MyProject\\Bohack2\\.pytest_tmp_vscode",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "repo: check forbidden files",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/check_forbidden_git_files.py"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "repo: full verification",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "repo: check forbidden files",
+        "backend: test",
+        "android: test debug unit",
+        "android: assemble debug"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to OmniEye Android process",
+      "type": "java",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 8700,
+      "preLaunchTask": "android: install debug apk"
+    }
+  ]
+}
