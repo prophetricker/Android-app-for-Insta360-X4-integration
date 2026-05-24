@@ -44,6 +44,7 @@ data class MainUiState(
     val currentTtsText: String = "",
     val analyzeResult: AnalyzeResponse? = null,
     val lastCapturedBitmap: Bitmap? = null,
+    val backendBaseUrl: String = "",
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val autoCaptureEnabled: Boolean = false
@@ -75,6 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun initializeManagers() {
         speechToTextManager.initialize()
         textToSpeechManager.initialize()
+        _uiState.update { it.copy(backendBaseUrl = cloudRepository.baseUrl) }
 
         viewModelScope.launch {
             cloudRepository.checkHealth()
@@ -140,6 +142,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkCameraConnection(): Boolean {
         return cameraManager.checkCameraWiFiConnection()
+    }
+
+    fun updateBackendBaseUrl(baseUrl: String) {
+        val normalized = cloudRepository.updateBaseUrl(baseUrl)
+        _uiState.update { it.copy(backendBaseUrl = normalized) }
+        checkCloudHealth()
+    }
+
+    fun checkCloudHealth() {
+        viewModelScope.launch {
+            cloudRepository.checkHealth()
+        }
     }
 
     private fun startAutoCapture() {

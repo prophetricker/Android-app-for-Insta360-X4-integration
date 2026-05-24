@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -43,7 +44,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,6 +157,13 @@ fun MainScreen(
                 onDisconnectClick = { viewModel.disconnectCamera() }
             )
 
+            BackendUrlCard(
+                baseUrl = uiState.backendBaseUrl,
+                isLoading = uiState.isLoading,
+                onSaveClick = { viewModel.updateBackendBaseUrl(it) },
+                onCheckClick = { viewModel.checkCloudHealth() }
+            )
+
             PhotoCaptureCard(
                 isConnected = uiState.cameraState is CameraConnectionState.Connected,
                 isLoading = uiState.isLoading,
@@ -186,6 +196,69 @@ fun MainScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun BackendUrlCard(
+    baseUrl: String,
+    isLoading: Boolean,
+    onSaveClick: (String) -> Unit,
+    onCheckClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var text by remember(baseUrl) { mutableStateOf(baseUrl) }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "云端地址",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("HTTPS 隧道地址") }
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = { onSaveClick(text) },
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("保存")
+                }
+                Button(
+                    onClick = onCheckClick,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("检测")
+                }
+            }
         }
     }
 }

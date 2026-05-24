@@ -38,11 +38,15 @@ class CloudRepository(private val context: Context) {
     private val _state = MutableStateFlow<CloudState>(CloudState.Idle)
     val state: StateFlow<CloudState> = _state.asStateFlow()
 
-    private val apiService: CloudApiService
+    private val backendConfig = BackendConfig(context)
     private val imageUploadManager = ImageUploadManager(context)
 
-    init {
-        apiService = createApiService()
+    val baseUrl: String
+        get() = backendConfig.getBaseUrl()
+
+    fun updateBaseUrl(baseUrl: String): String {
+        resetState()
+        return backendConfig.setBaseUrl(baseUrl)
     }
 
     private fun createApiService(): CloudApiService {
@@ -58,7 +62,7 @@ class CloudRepository(private val context: Context) {
             .build()
 
         val retrofit = Retrofit.Builder()
-            .baseUrl(CloudEndpoints.BASE_URL)
+            .baseUrl(backendConfig.getBaseUrl())
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -80,7 +84,7 @@ class CloudRepository(private val context: Context) {
                     )
                 )
             } else {
-                val response = apiService.healthCheck()
+                val response = createApiService().healthCheck()
                 if (response.isSuccessful && response.body()?.ok == true) {
                     _state.value = CloudState.Connected
                     CloudResult.Success(
@@ -123,7 +127,7 @@ class CloudRepository(private val context: Context) {
                 val descPart = imageUploadManager.createDescriptionBody(description)
 
                 _state.value = CloudState.Uploading(50)
-                val response = apiService.uploadImage(imagePart, descPart)
+                val response = createApiService().uploadImage(imagePart, descPart)
 
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Processing("Upload complete")
@@ -147,7 +151,7 @@ class CloudRepository(private val context: Context) {
             val framePart = createAnalyzeFramePart(file)
 
             _state.value = CloudState.Processing("云端 DAP 正在分析...")
-            val response = apiService.analyzeFrame(framePart)
+            val response = createApiService().analyzeFrame(framePart)
 
             if (response.isSuccessful && response.body() != null) {
                 val analyzeResponse = response.body()!!
@@ -172,7 +176,7 @@ class CloudRepository(private val context: Context) {
                 _state.value = CloudState.Success(MockData.imageProcessResult)
                 CloudResult.Success(MockData.imageProcessResult)
             } else {
-                val response = apiService.processImage(imageId)
+                val response = createApiService().processImage(imageId)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)
@@ -197,7 +201,7 @@ class CloudRepository(private val context: Context) {
                 CloudResult.Success(MockData.voiceProcessResponse)
             } else {
                 val request = VoiceProcessRequest(text = text)
-                val response = apiService.processVoice(request)
+                val response = createApiService().processVoice(request)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)
@@ -222,7 +226,7 @@ class CloudRepository(private val context: Context) {
                 CloudResult.Success(MockData.ttsResponse)
             } else {
                 val request = TtsRequest(text = text)
-                val response = apiService.synthesizeSpeech(request)
+                val response = createApiService().synthesizeSpeech(request)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)
