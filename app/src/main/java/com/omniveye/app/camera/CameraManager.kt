@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.media.MediaScannerConnection
 import android.net.wifi.WifiManager
 import android.os.Environment
@@ -44,6 +47,8 @@ sealed class CameraOperationResult {
 }
 
 fun x4OscInfoUrl(): String = "http://192.168.42.1:80/osc/info"
+
+fun shouldAttemptX4OscConnection(isWifiEnabled: Boolean): Boolean = isWifiEnabled
 
 class CameraManager(private val context: Context) {
 
@@ -155,7 +160,7 @@ class CameraManager(private val context: Context) {
         _connectionState.value = CameraConnectionState.Connecting
         Log.d(TAG, "Attempting to connect to camera...")
 
-        val wifiCheck = checkWiFiEnabled()
+        val wifiCheck = shouldAttemptX4OscConnection(isWiFiEnabled())
         Log.d(TAG, "WiFi status: enabled=$wifiCheck")
 
         if (!wifiCheck) {
@@ -191,12 +196,33 @@ class CameraManager(private val context: Context) {
         }
     }
 
-    private fun checkWiFiEnabled(): Boolean {
+    private fun isWiFiEnabled(): Boolean {
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val isEnabled = wifiManager.isWifiEnabled
         val networkId = wifiManager.connectionInfo?.networkId ?: -1
         Log.d(TAG, "WiFi enabled: $isEnabled, networkId: $networkId")
-        return isEnabled && networkId != -1
+        return isEnabled
+    }
+
+    private fun findWifiNetwork(): Network? {
+        val connectivityManager =
+            context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+    }
+
+    private fun openCameraConnection(url: URL): HttpURLConnection {
+        val network = findWifiNetwork()
+        val connection = if (network != null) {
+            Log.d(TAG, "Opening camera connection through Wi-Fi network")
+            network.openConnection(url)
+        } else {
+            Log.w(TAG, "No explicit Wi-Fi network found; using default route for camera connection")
+            url.openConnection()
+        }
+        return connection as HttpURLConnection
     }
 
     private suspend fun checkCameraConnection(): Boolean {
@@ -205,7 +231,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Testing connection to: $OSC_INFO_URL")
 
             val url = URL(OSC_INFO_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url)
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -241,7 +267,7 @@ class CameraManager(private val context: Context) {
     private suspend fun fetchCameraState() {
         try {
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url)
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -352,7 +378,7 @@ class CameraManager(private val context: Context) {
     private suspend fun checkCameraState(): JSONObject {
         return try {
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+                val connection = openCameraConnection(url)
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -500,7 +526,7 @@ class CameraManager(private val context: Context) {
 
     private fun sendOscCommand(body: String): String {
         val url = URL(OSC_COMMAND_URL)
-        val connection = url.openConnection() as HttpURLConnection
+        val connection = openCameraConnection(url)
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.doInput = true
@@ -545,7 +571,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Downloading photo from: $fullUrl")
 
             val url = URL(fullUrl)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url)
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "image/*")
             connection.connectTimeout = READ_TIMEOUT
@@ -577,7 +603,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Fetching photo list...")
 
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url)
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
