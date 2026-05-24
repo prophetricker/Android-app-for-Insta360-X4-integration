@@ -48,6 +48,34 @@ sealed class CameraOperationResult {
 
 fun x4OscInfoUrl(): String = "http://192.168.42.1:80/osc/info"
 
+fun x4OscCommandStatusUrl(): String = "http://192.168.42.1:80/osc/commands/status"
+
+fun x4OscCommandStatusBody(commandId: String): String =
+    """{"id":"${commandId.toJsonStringContent()}"}"""
+
+private fun String.toJsonStringContent(): String =
+    buildString {
+        for (char in this@toJsonStringContent) {
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\b' -> append("\\b")
+                '\u000C' -> append("\\f")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> {
+                    if (char.code < 0x20) {
+                        append("\\u")
+                        append(char.code.toString(16).padStart(4, '0'))
+                    } else {
+                        append(char)
+                    }
+                }
+            }
+        }
+    }
+
 fun shouldAttemptX4OscConnection(isWifiEnabled: Boolean): Boolean = isWifiEnabled
 
 class CameraManager(private val context: Context) {
@@ -61,6 +89,7 @@ class CameraManager(private val context: Context) {
 
         private const val OSC_INFO_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/info"
         private const val OSC_COMMAND_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/commands/execute"
+        private const val OSC_COMMAND_STATUS_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/commands/status"
         private const val OSC_STATE_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/state"
         private const val OSC_THUMBNAILS_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/thumbnails"
         private const val OSC_FILES_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/files"
@@ -275,7 +304,7 @@ class CameraManager(private val context: Context) {
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val response = readResponse(connection.inputStream)
                 val json = JSONObject(response)
-                cameraSessionId = json.optString("sessionId", null)
+                cameraSessionId = json.optString("sessionId").takeIf { it.isNotBlank() }
                 Log.d(TAG, "Camera session ID: $cameraSessionId")
             }
         } catch (e: Exception) {
@@ -350,7 +379,7 @@ class CameraManager(private val context: Context) {
             }
 
             // Handle async response (state: "inProgress")
-            val id = jsonResponse.optString("id", null)
+            val id = jsonResponse.optString("id").takeIf { it.isNotBlank() }
             if (id != null && jsonResponse.optString("state", "") == "inProgress") {
                 Log.d(TAG, "Photo capture in progress, polling for result...")
                 return@withContext pollForPhotoResult(id)
@@ -402,12 +431,7 @@ class CameraManager(private val context: Context) {
             for (attempt in 1..MAX_POLL_ATTEMPTS) {
                 delay(POLL_INTERVAL_MS)
 
-                val statusBody = JSONObject().apply {
-                    put("name", "camera.takePicture")
-                    put("id", commandId)
-                }
-
-                val response = sendOscCommand(statusBody.toString())
+                val response = sendOscStatusCommand(x4OscCommandStatusBody(commandId))
                 val jsonResponse = JSONObject(response)
 
                 val state = jsonResponse.optString("state", "")
@@ -556,6 +580,41 @@ class CameraManager(private val context: Context) {
         }
 
         Log.d(TAG, "OSC command response: $response")
+        return response
+    }
+
+    private fun sendOscStatusCommand(body: String): String {
+        val url = URL(OSC_COMMAND_STATUS_URL)
+        val connection = openCameraConnection(url)
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.doInput = true
+        connection.setRequestProperty("Content-Type", "application/json;charset=utf-8")
+        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("X-XSRF-Protected", "1")
+        connection.connectTimeout = CONNECT_TIMEOUT
+        connection.readTimeout = READ_TIMEOUT
+
+        Log.d(TAG, "Sending OSC status command: $body")
+
+        connection.outputStream.use { os ->
+            os.write(body.toByteArray())
+        }
+
+        val responseCode = connection.responseCode
+        val response = if (responseCode == HttpURLConnection.HTTP_OK) {
+            readResponse(connection.inputStream)
+        } else {
+            val errorResponse = try {
+                readResponse(connection.errorStream)
+            } catch (e: Exception) {
+                "No error body"
+            }
+            Log.e(TAG, "OSC status failed: HTTP $responseCode, body: $errorResponse")
+            throw Exception("OSC status HTTP $responseCode: $errorResponse")
+        }
+
+        Log.d(TAG, "OSC status response: $response")
         return response
     }
 

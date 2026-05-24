@@ -12,6 +12,16 @@ class CameraEndpointTest {
     }
 
     @Test
+    fun x4OscCommandStatusUsesDedicatedStatusEndpoint() {
+        assertEquals("http://192.168.42.1:80/osc/commands/status", x4OscCommandStatusUrl())
+    }
+
+    @Test
+    fun x4OscCommandStatusBodyOnlyIncludesCommandId() {
+        assertEquals("""{"id":"command-123"}""", x4OscCommandStatusBody("command-123"))
+    }
+
+    @Test
     fun attemptsX4OscConnectionWhenWifiIsEnabledEvenIfNetworkIdIsHidden() {
         assertTrue(shouldAttemptX4OscConnection(isWifiEnabled = true))
     }
