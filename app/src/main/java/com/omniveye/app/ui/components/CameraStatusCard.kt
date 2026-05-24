@@ -144,6 +144,24 @@ fun CameraStatusCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            if (cameraState is CameraConnectionState.Error) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = CameraDisconnected.copy(alpha = 0.1f)
+                    )
+                ) {
+                    Text(
+                        text = cameraState.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CameraDisconnected,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
