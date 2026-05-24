@@ -10,3 +10,9 @@ fun vibrationDurationMs(level: Int): Long = when (obstacleLevel(level)) {
     3 -> 240L
     else -> 420L
 }
+
+fun roadshowVibrationDurationMs(level: Int, confidence: Double): Long {
+    val riskDuration = vibrationDurationMs(level)
+    if (riskDuration > 0L) return riskDuration
+    return if (level == 1 && confidence > 0.0) 70L else 0L
+}

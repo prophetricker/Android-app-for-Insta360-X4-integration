@@ -18,8 +18,7 @@ import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
 import com.omniveye.app.cloud.VoiceProcessResponse
-import com.omniveye.app.feedback.shouldVibrateForLevel
-import com.omniveye.app.feedback.vibrationDurationMs
+import com.omniveye.app.feedback.roadshowVibrationDurationMs
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.speech.SpeechToTextManager
 import com.omniveye.app.speech.TtsState
@@ -243,7 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 processedResult = result.sceneText
             )
         }
-        vibrateForLevel(result.level)
+        vibrateForAnalyzeResult(result)
         speakResult(result.sceneText)
     }
 
@@ -286,10 +285,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun vibrateForLevel(level: Int) {
-        if (!shouldVibrateForLevel(level)) return
+    private fun vibrateForAnalyzeResult(result: AnalyzeResponse) {
+        val durationMs = roadshowVibrationDurationMs(result.level, result.confidence)
+        vibrate(durationMs)
+    }
 
-        val durationMs = vibrationDurationMs(level)
+    private fun vibrate(durationMs: Long) {
+        if (durationMs <= 0L) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator?.vibrate(
                 VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)

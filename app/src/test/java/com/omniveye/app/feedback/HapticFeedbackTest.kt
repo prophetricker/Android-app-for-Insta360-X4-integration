@@ -25,4 +25,11 @@ class HapticFeedbackTest {
         assertEquals(420L, vibrationDurationMs(4))
         assertEquals(420L, vibrationDurationMs(99))
     }
+
+    @Test
+    fun givesLightRoadshowPulseForValidLowRiskCloudResult() {
+        assertEquals(0L, roadshowVibrationDurationMs(level = 0, confidence = 0.0))
+        assertEquals(70L, roadshowVibrationDurationMs(level = 1, confidence = 0.8))
+        assertEquals(120L, roadshowVibrationDurationMs(level = 2, confidence = 0.8))
+    }
 }
