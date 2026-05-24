@@ -59,6 +59,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.omniveye.app.camera.CameraConnectionState
+import com.omniveye.app.cloud.CellularNetworkState
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.ui.components.CameraStatusCard
 import com.omniveye.app.ui.components.ResultCard
@@ -68,7 +69,9 @@ import com.omniveye.app.ui.theme.Background
 import com.omniveye.app.ui.theme.CardBackground
 import com.omniveye.app.ui.theme.PrimaryBlue
 import com.omniveye.app.ui.theme.PrimaryBlueLight
+import com.omniveye.app.ui.theme.Success
 import com.omniveye.app.ui.theme.Surface
+import com.omniveye.app.ui.theme.Warning
 import com.omniveye.app.viewmodel.MainUiState
 import com.omniveye.app.viewmodel.MainViewModel
 
@@ -160,6 +163,8 @@ fun MainScreen(
             BackendUrlCard(
                 baseUrl = uiState.backendBaseUrl,
                 isLoading = uiState.isLoading,
+                cameraState = uiState.cameraState,
+                cellularNetworkState = uiState.cellularNetworkState,
                 onSaveClick = { viewModel.updateBackendBaseUrl(it) },
                 onCheckClick = { viewModel.checkCloudHealth() }
             )
@@ -204,6 +209,8 @@ fun MainScreen(
 fun BackendUrlCard(
     baseUrl: String,
     isLoading: Boolean,
+    cameraState: CameraConnectionState,
+    cellularNetworkState: CellularNetworkState,
     onSaveClick: (String) -> Unit,
     onCheckClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -236,6 +243,10 @@ fun BackendUrlCard(
                 singleLine = true,
                 label = { Text("HTTPS 隧道地址") }
             )
+            CloudRouteStatus(
+                cameraState = cameraState,
+                cellularNetworkState = cellularNetworkState
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -260,6 +271,48 @@ fun BackendUrlCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CloudRouteStatus(
+    cameraState: CameraConnectionState,
+    cellularNetworkState: CellularNetworkState,
+    modifier: Modifier = Modifier
+) {
+    val x4Text = if (cameraState is CameraConnectionState.Connected) {
+        "X4 WiFi: connected"
+    } else {
+        "X4 WiFi: not connected"
+    }
+    val cellularText = when (cellularNetworkState) {
+        is CellularNetworkState.Available -> "Cellular cloud route: ready"
+        is CellularNetworkState.Requesting -> "Cellular cloud route: requesting"
+        is CellularNetworkState.Lost -> "Cellular cloud route: lost"
+        is CellularNetworkState.Unavailable -> "Cellular cloud route: not ready"
+    }
+    val cellularColor = when (cellularNetworkState) {
+        is CellularNetworkState.Available -> Success
+        is CellularNetworkState.Requesting -> Warning
+        is CellularNetworkState.Lost -> Warning
+        is CellularNetworkState.Unavailable -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = x4Text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = cellularText,
+            style = MaterialTheme.typography.bodySmall,
+            color = cellularColor,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

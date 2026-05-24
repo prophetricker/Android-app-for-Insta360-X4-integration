@@ -6,11 +6,10 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
 
 sealed class CloudState {
     data object Idle : CloudState()
@@ -31,7 +30,6 @@ class CloudRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "CloudRepository"
-        private const val TIMEOUT_SECONDS = 60L
         private const val USE_MOCK = false
     }
 
@@ -40,6 +38,10 @@ class CloudRepository(private val context: Context) {
 
     private val backendConfig = BackendConfig(context)
     private val imageUploadManager = ImageUploadManager(context)
+    private val cellularNetworkProvider = CellularNetworkProvider(context)
+
+    val cellularNetworkState: StateFlow<CellularNetworkState>
+        get() = cellularNetworkProvider.state
 
     val baseUrl: String
         get() = backendConfig.getBaseUrl()
@@ -50,29 +52,40 @@ class CloudRepository(private val context: Context) {
     }
 
     private fun createApiService(): CloudApiService {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .addInterceptor(loggingInterceptor)
-            .build()
+        val route = createCloudOkHttpClient(cellularNetworkProvider.currentBinding())
 
         val retrofit = Retrofit.Builder()
             .baseUrl(backendConfig.getBaseUrl())
-            .client(okHttpClient)
+            .client(route.client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
         return retrofit.create(CloudApiService::class.java)
     }
 
+    fun startCellularRoute() {
+        cellularNetworkProvider.start()
+    }
+
+    fun stopCellularRoute() {
+        cellularNetworkProvider.stop()
+    }
+
+    private suspend fun waitForCellularRoute(): Boolean {
+        if (cellularNetworkProvider.currentBinding() != null) return true
+
+        _state.value = CloudState.Processing("Waiting for cellular cloud route...")
+        cellularNetworkProvider.start()
+        withTimeoutOrNull(5_000) {
+            cellularNetworkProvider.state.first { it is CellularNetworkState.Available }
+        }
+        return cellularNetworkProvider.currentBinding() != null
+    }
+
     suspend fun checkHealth(): CloudResult<HealthCheckResponse> {
         return try {
             _state.value = CloudState.Connecting
+            waitForCellularRoute()
             if (USE_MOCK) {
                 kotlinx.coroutines.delay(500)
                 _state.value = CloudState.Connected
@@ -146,6 +159,9 @@ class CloudRepository(private val context: Context) {
     suspend fun analyzeFrame(bitmap: Bitmap): CloudResult<AnalyzeResponse> {
         return try {
             _state.value = CloudState.Uploading(0)
+            if (!waitForCellularRoute()) {
+                throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
+            }
 
             val file = imageUploadManager.prepareForUpload(bitmap)
             val framePart = createAnalyzeFramePart(file)

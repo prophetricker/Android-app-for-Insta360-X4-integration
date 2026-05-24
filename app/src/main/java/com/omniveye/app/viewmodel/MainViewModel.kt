@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.omniveye.app.camera.CameraConnectionState
 import com.omniveye.app.camera.CameraManager
 import com.omniveye.app.cloud.AnalyzeResponse
+import com.omniveye.app.cloud.CellularNetworkState
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
@@ -44,6 +45,7 @@ data class MainUiState(
     val analyzeResult: AnalyzeResponse? = null,
     val lastCapturedBitmap: Bitmap? = null,
     val backendBaseUrl: String = "",
+    val cellularNetworkState: CellularNetworkState = CellularNetworkState.Unavailable,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val autoCaptureEnabled: Boolean = false
@@ -76,6 +78,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         speechToTextManager.initialize()
         textToSpeechManager.initialize()
         _uiState.update { it.copy(backendBaseUrl = cloudRepository.baseUrl) }
+        cloudRepository.startCellularRoute()
 
         viewModelScope.launch {
             cloudRepository.checkHealth()
@@ -101,6 +104,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             cloudRepository.state.collect { state ->
                 _uiState.update { it.copy(cloudState = state) }
+            }
+        }
+
+        viewModelScope.launch {
+            cloudRepository.cellularNetworkState.collect { state ->
+                _uiState.update { it.copy(cellularNetworkState = state) }
             }
         }
 
@@ -335,6 +344,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         autoCaptureJob?.cancel()
+        cloudRepository.stopCellularRoute()
         speechToTextManager.destroy()
         textToSpeechManager.shutdown()
     }
