@@ -4,6 +4,7 @@ import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.net.SocketFactory
 
@@ -19,7 +20,10 @@ data class CloudHttpClientRoute(
     val usesBoundNetwork: Boolean
 )
 
-fun createCloudOkHttpClient(binding: CloudNetworkBinding?): CloudHttpClientRoute {
+fun createCloudOkHttpClient(
+    binding: CloudNetworkBinding?,
+    fallbackDns: (String) -> List<InetAddress> = Dns.SYSTEM::lookup
+): CloudHttpClientRoute {
     val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
     }
@@ -34,7 +38,11 @@ fun createCloudOkHttpClient(binding: CloudNetworkBinding?): CloudHttpClientRoute
         builder.socketFactory(binding.socketFactory)
         builder.dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
-                return binding.lookup(hostname)
+                return try {
+                    binding.lookup(hostname)
+                } catch (e: UnknownHostException) {
+                    fallbackDns(hostname)
+                }
             }
         })
     }

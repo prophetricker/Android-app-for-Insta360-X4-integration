@@ -4,6 +4,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.net.Socket
 import javax.net.SocketFactory
 
@@ -26,6 +27,25 @@ class CloudHttpClientFactoryTest {
         val route = createCloudOkHttpClient(null)
 
         assertTrue(!route.usesBoundNetwork)
+    }
+
+    @Test
+    fun fallsBackToSystemDnsWhenBoundNetworkDnsFails() {
+        val fallbackAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 2))
+        val binding = object : CloudNetworkBinding {
+            override val socketFactory: SocketFactory = FakeSocketFactory()
+
+            override fun lookup(hostname: String): List<InetAddress> {
+                throw UnknownHostException(hostname)
+            }
+        }
+
+        val route = createCloudOkHttpClient(
+            binding = binding,
+            fallbackDns = { listOf(fallbackAddress) }
+        )
+
+        assertSame(fallbackAddress, route.client.dns.lookup("example.com").single())
     }
 }
 
