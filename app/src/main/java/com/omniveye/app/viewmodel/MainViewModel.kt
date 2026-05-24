@@ -19,6 +19,7 @@ import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
 import com.omniveye.app.cloud.VoiceProcessResponse
+import com.omniveye.app.demo.RoadshowDemo
 import com.omniveye.app.feedback.roadshowVibrationDurationMs
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.speech.SpeechToTextManager
@@ -46,6 +47,7 @@ data class MainUiState(
     val lastCapturedBitmap: Bitmap? = null,
     val backendBaseUrl: String = "",
     val cellularNetworkState: CellularNetworkState = CellularNetworkState.Unavailable,
+    val demoSceneName: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val autoCaptureEnabled: Boolean = false
@@ -68,6 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     private var autoCaptureJob: Job? = null
+    private var demoSceneIndex = 0
 
     init {
         initializeManagers()
@@ -183,7 +186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun capturePhoto() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, demoSceneName = null) }
 
             if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
                 uploadImage(createRoadshowDemoFrame(), isCameraFrame = false)
@@ -248,11 +251,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 isLoading = false,
                 analyzeResult = result,
-                processedResult = result.sceneText
+                processedResult = result.sceneText,
+                demoSceneName = null
             )
         }
         vibrateForAnalyzeResult(result)
         speakResult(result.sceneText)
+    }
+
+    fun playRoadshowDemo() {
+        val scene = RoadshowDemo.sceneAt(demoSceneIndex)
+        demoSceneIndex++
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                analyzeResult = scene.response,
+                processedResult = scene.response.sceneText,
+                demoSceneName = scene.name,
+                errorMessage = null
+            )
+        }
+        vibrateForAnalyzeResult(scene.response)
+        speakResult(scene.response.sceneText)
     }
 
     fun startListening() {

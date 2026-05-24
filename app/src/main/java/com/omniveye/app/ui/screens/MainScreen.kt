@@ -172,7 +172,8 @@ fun MainScreen(
             PhotoCaptureCard(
                 isConnected = uiState.cameraState is CameraConnectionState.Connected,
                 isLoading = uiState.isLoading,
-                onCaptureClick = { viewModel.capturePhoto() }
+                onCaptureClick = { viewModel.capturePhoto() },
+                onDemoClick = { viewModel.playRoadshowDemo() }
             )
 
             VoiceInputSection(
@@ -189,7 +190,7 @@ fun MainScreen(
                 exit = fadeOut()
             ) {
                 uiState.analyzeResult?.let { result ->
-                    AnalyzeResultCard(result)
+                    AnalyzeResultCard(result, uiState.demoSceneName)
                 }
             }
 
@@ -326,6 +327,7 @@ fun PhotoCaptureCard(
     isConnected: Boolean,
     isLoading: Boolean,
     onCaptureClick: () -> Unit,
+    onDemoClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -376,33 +378,53 @@ fun PhotoCaptureCard(
                 }
             }
 
-            Button(
-                onClick = onCaptureClick,
-                enabled = !isLoading,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
-                    disabledContainerColor = PrimaryBlue.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier.height(44.dp)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                } else {
+                Button(
+                    onClick = onCaptureClick,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryBlue,
+                        disabledContainerColor = PrimaryBlue.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            if (isConnected) "拍照" else "上传",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+                Button(
+                    onClick = onDemoClick,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Warning),
+                    modifier = Modifier.height(40.dp)
+                ) {
                     Icon(
-                        imageVector = Icons.Default.CameraAlt,
+                        imageVector = Icons.Default.Photo,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        if (isConnected) "拍照" else "演示",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    Text("路演演示", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -514,6 +536,7 @@ fun VoiceInputSection(
 @Composable
 fun AnalyzeResultCard(
     result: com.omniveye.app.cloud.AnalyzeResponse,
+    demoSceneName: String?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -541,7 +564,7 @@ fun AnalyzeResultCard(
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "云端避障分析",
+                text = if (demoSceneName == null) "云端避障分析" else "路演演示：$demoSceneName",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
