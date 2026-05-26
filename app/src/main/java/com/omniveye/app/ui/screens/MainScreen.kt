@@ -166,7 +166,7 @@ fun MainScreen(
                 cameraState = uiState.cameraState,
                 cellularNetworkState = uiState.cellularNetworkState,
                 onSaveClick = { viewModel.updateBackendBaseUrl(it) },
-                onCheckClick = { viewModel.checkCloudHealth() }
+                onCheckClick = { viewModel.updateBackendBaseUrl(it) }
             )
 
             PhotoCaptureCard(
@@ -217,7 +217,7 @@ fun BackendUrlCard(
     cameraState: CameraConnectionState,
     cellularNetworkState: CellularNetworkState,
     onSaveClick: (String) -> Unit,
-    onCheckClick: () -> Unit,
+    onCheckClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by remember(baseUrl) { mutableStateOf(baseUrl) }
@@ -266,7 +266,7 @@ fun BackendUrlCard(
                     Text("保存")
                 }
                 Button(
-                    onClick = onCheckClick,
+                    onClick = { onCheckClick(text) },
                     enabled = !isLoading,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
