@@ -4,6 +4,7 @@ FastAPI backend for the Android-first OmniEye flow.
 
 ```text
 Android frame upload -> cloud-backend /analyze -> latest DAP depth result -> distance/level/scene_text
+Android frame upload -> cloud-backend /semantic-analyze -> vision semantics -> product / traffic-light guidance
 ```
 
 ## Run the lightweight service
@@ -26,6 +27,18 @@ Upload a frame:
 curl.exe -F "frame=@sample.jpg" http://127.0.0.1:8000/analyze
 ```
 
+Semantic product demo:
+
+```powershell
+curl.exe -F "frame=@shelf.jpg" -F "mode=product" -F "query=牛奶" http://127.0.0.1:8000/semantic-analyze
+```
+
+Semantic traffic-light demo:
+
+```powershell
+curl.exe -F "frame=@crossing.jpg" -F "mode=traffic_light" http://127.0.0.1:8000/semantic-analyze
+```
+
 When DAP is not configured yet, `/analyze` still returns an Android-compatible fallback:
 
 ```json
@@ -36,6 +49,21 @@ When DAP is not configured yet, `/analyze` still returns an Android-compatible f
   "scene_text": "正在分析前方环境",
   "latency_ms": 0
 }
+```
+
+When `OPENAI_API_KEY` is not configured, `/semantic-analyze` also returns a stable demo fallback so the Android app can keep recording and presenting the product / traffic-light flow. To enable real visual semantic analysis:
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+$env:OPENAI_VISION_MODEL = "gpt-4.1-mini"
+python -m uvicorn omnieye_cloud.main:app --app-dir cloud-backend --host 0.0.0.0 --port 8000
+```
+
+The semantic endpoint supports:
+
+```text
+mode=product       query=目标商品，例如 牛奶、矿泉水、药盒
+mode=traffic_light query 可省略
 ```
 
 ## DAP setup
@@ -83,6 +111,16 @@ POST /analyze
 multipart form-data field: frame
 ```
 
+For visual semantic analysis:
+
+```text
+POST /semantic-analyze
+multipart form-data fields:
+  frame: image file
+  mode: product | traffic_light
+  query: optional target, for product mode
+```
+
 Response:
 
 ```json
@@ -92,6 +130,21 @@ Response:
   "confidence": 0.8,
   "scene_text": "前方约一米有障碍物，请减速。",
   "latency_ms": 25
+}
+```
+
+Semantic response:
+
+```json
+{
+  "mode": "traffic_light",
+  "summary": "前方是绿灯，但请确认周围安全后通行。",
+  "objects": ["traffic light", "crosswalk"],
+  "traffic_light": "green",
+  "target_found": true,
+  "product_name": null,
+  "confidence": 0.82,
+  "latency_ms": 1500
 }
 ```
 
@@ -118,12 +171,12 @@ python -m pytest cloud-backend -q --basetemp D:\MyProject\Bohack2\.pytest_tmp_re
 Work should stay on:
 
 ```text
-cloud-backend-mvp
+cloud-backend-roadshow
 ```
 
 Push to:
 
 ```powershell
 git remote add android-insta360 https://github.com/prophetricker/Android-app-for-Insta360-X4-integration.git
-git push -u android-insta360 cloud-backend-mvp
+git push -u android-insta360 cloud-backend-roadshow
 ```

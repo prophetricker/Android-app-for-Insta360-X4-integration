@@ -4,11 +4,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
 from .service import AnalysisService
+from .semantic import SemanticAnalyzer, SemanticMode
 
 
 class AnalyzeResponse(BaseModel):
@@ -19,7 +20,19 @@ class AnalyzeResponse(BaseModel):
     latency_ms: int
 
 
+class SemanticAnalyzeResponse(BaseModel):
+    mode: str
+    summary: str
+    objects: list[str]
+    traffic_light: str | None
+    target_found: bool
+    product_name: str | None
+    confidence: float
+    latency_ms: int
+
+
 service = AnalysisService(upload_dir=Path("cloud-backend/uploads"))
+semantic_analyzer = SemanticAnalyzer()
 
 
 @asynccontextmanager
@@ -55,6 +68,32 @@ async def analyze(frame: UploadFile = File(...)) -> AnalyzeResponse:
         confidence=result.confidence,
         scene_text=result.scene_text,
         latency_ms=latency_ms,
+    )
+
+
+@app.post("/semantic-analyze", response_model=SemanticAnalyzeResponse)
+async def semantic_analyze(
+    frame: UploadFile = File(...),
+    mode: SemanticMode = Form(...),
+    query: str | None = Form(default=None),
+) -> SemanticAnalyzeResponse:
+    content = await frame.read()
+    if not _is_image(content):
+        raise HTTPException(status_code=400, detail="Uploaded frame must be an image")
+
+    suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
+    frame_path = service.upload_dir / f"semantic_latest{suffix}"
+    frame_path.write_bytes(content)
+    result = semantic_analyzer.analyze(frame_path, mode=mode, query=query)
+    return SemanticAnalyzeResponse(
+        mode=result.mode,
+        summary=result.summary,
+        objects=result.objects,
+        traffic_light=result.traffic_light,
+        target_found=result.target_found,
+        product_name=result.product_name,
+        confidence=result.confidence,
+        latency_ms=result.latency_ms,
     )
 
 

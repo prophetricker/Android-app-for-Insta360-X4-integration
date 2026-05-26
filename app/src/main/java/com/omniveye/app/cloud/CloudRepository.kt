@@ -207,6 +207,40 @@ class CloudRepository(private val context: Context) {
         )
     }
 
+    suspend fun semanticAnalyzeFrame(
+        bitmap: Bitmap,
+        mode: SemanticAnalyzeMode,
+        query: String? = null,
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudResult<SemanticAnalyzeResponse> {
+        return try {
+            _state.value = CloudState.Uploading(0)
+            if (shouldRequireCellularRoute(source) && !waitForCellularRoute()) {
+                throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
+            }
+
+            val file = imageUploadManager.prepareForUpload(bitmap)
+            val framePart = createAnalyzeFramePart(file)
+            val modePart = createSemanticTextPart(mode.value)
+            val queryPart = query?.takeIf { it.isNotBlank() }?.let(::createSemanticTextPart)
+
+            _state.value = CloudState.Processing("云端视觉语义正在分析...")
+            val response = createApiService().semanticAnalyze(framePart, modePart, queryPart)
+
+            if (response.isSuccessful && response.body() != null) {
+                val semanticResponse = response.body()!!
+                _state.value = CloudState.Success(semanticResponse)
+                CloudResult.Success(semanticResponse)
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Semantic analyze failed")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Semantic analyze failed", e)
+            _state.value = CloudState.Error("Semantic analyze failed: ${e.message}")
+            CloudResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun processImage(imageId: String): CloudResult<ImageProcessResult> {
         return try {
             _state.value = CloudState.Processing("Processing image...")

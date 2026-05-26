@@ -16,6 +16,8 @@ import com.omniveye.app.cloud.CellularNetworkState
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
+import com.omniveye.app.cloud.SemanticAnalyzeMode
+import com.omniveye.app.cloud.SemanticAnalyzeResponse
 import com.omniveye.app.cloud.VoiceProcessResponse
 import com.omniveye.app.demo.DevelopmentSampleFrame
 import com.omniveye.app.demo.RoadshowDemo
@@ -43,6 +45,7 @@ data class MainUiState(
     val processedResult: String = "",
     val currentTtsText: String = "",
     val analyzeResult: AnalyzeResponse? = null,
+    val semanticResult: SemanticAnalyzeResponse? = null,
     val lastCapturedBitmap: Bitmap? = null,
     val backendBaseUrl: String = "",
     val cellularNetworkState: CellularNetworkState = CellularNetworkState.Unavailable,
@@ -284,6 +287,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         vibrateForAnalyzeResult(scene.response)
         speakResult(scene.response.sceneText)
+    }
+
+    fun analyzeProductDemo(query: String = "牛奶") {
+        analyzeSemanticDemo(
+            mode = SemanticAnalyzeMode.PRODUCT,
+            query = query,
+            sourceLabel = "商品识别"
+        )
+    }
+
+    fun analyzeTrafficLightDemo() {
+        analyzeSemanticDemo(
+            mode = SemanticAnalyzeMode.TRAFFIC_LIGHT,
+            query = null,
+            sourceLabel = "红绿灯识别"
+        )
+    }
+
+    private fun analyzeSemanticDemo(
+        mode: SemanticAnalyzeMode,
+        query: String?,
+        sourceLabel: String
+    ) {
+        viewModelScope.launch {
+            val bitmap = DevelopmentSampleFrame.createBitmap()
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    lastCapturedBitmap = bitmap,
+                    resultSourceLabel = sourceLabel,
+                    semanticResult = null,
+                    errorMessage = null
+                )
+            }
+
+            when (
+                val result = cloudRepository.semanticAnalyzeFrame(
+                    bitmap = bitmap,
+                    mode = mode,
+                    query = query,
+                    source = AnalyzeFrameSource.DevelopmentSample
+                )
+            ) {
+                is CloudResult.Success -> handleSemanticResult(result.data, sourceLabel)
+                is CloudResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = result.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun handleSemanticResult(result: SemanticAnalyzeResponse, sourceLabel: String) {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                semanticResult = result,
+                processedResult = result.summary,
+                resultSourceLabel = sourceLabel
+            )
+        }
+        speakResult(result.summary)
     }
 
     fun startListening() {

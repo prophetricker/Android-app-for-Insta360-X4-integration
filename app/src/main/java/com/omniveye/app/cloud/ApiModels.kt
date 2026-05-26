@@ -52,6 +52,30 @@ data class AnalyzeResponse(
     val latencyMs: Int
 )
 
+enum class SemanticAnalyzeMode(val value: String) {
+    PRODUCT("product"),
+    TRAFFIC_LIGHT("traffic_light")
+}
+
+data class SemanticAnalyzeResponse(
+    @SerializedName("mode")
+    val mode: String,
+    @SerializedName("summary")
+    val summary: String,
+    @SerializedName("objects")
+    val objects: List<String>,
+    @SerializedName("traffic_light")
+    val trafficLight: String?,
+    @SerializedName("target_found")
+    val targetFound: Boolean,
+    @SerializedName("product_name")
+    val productName: String?,
+    @SerializedName("confidence")
+    val confidence: Double,
+    @SerializedName("latency_ms")
+    val latencyMs: Int
+)
+
 data class VoiceProcessRequest(
     @SerializedName("text")
     val text: String,

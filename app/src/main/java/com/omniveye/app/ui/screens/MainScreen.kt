@@ -173,7 +173,9 @@ fun MainScreen(
                 isConnected = uiState.cameraState is CameraConnectionState.Connected,
                 isLoading = uiState.isLoading,
                 onCaptureClick = { viewModel.capturePhoto() },
-                onDemoClick = { viewModel.playRoadshowDemo() }
+                onDemoClick = { viewModel.playRoadshowDemo() },
+                onProductClick = { viewModel.analyzeProductDemo() },
+                onTrafficLightClick = { viewModel.analyzeTrafficLightDemo() }
             )
 
             VoiceInputSection(
@@ -185,11 +187,13 @@ fun MainScreen(
             )
 
             AnimatedVisibility(
-                visible = uiState.analyzeResult != null,
+                visible = uiState.analyzeResult != null || uiState.semanticResult != null,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                uiState.analyzeResult?.let { result ->
+                uiState.semanticResult?.let { result ->
+                    SemanticResultCard(result, uiState.resultSourceLabel)
+                } ?: uiState.analyzeResult?.let { result ->
                     AnalyzeResultCard(result, uiState.resultSourceLabel)
                 }
             }
@@ -328,6 +332,8 @@ fun PhotoCaptureCard(
     isLoading: Boolean,
     onCaptureClick: () -> Unit,
     onDemoClick: () -> Unit,
+    onProductClick: () -> Unit,
+    onTrafficLightClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -425,6 +431,24 @@ fun PhotoCaptureCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("结果演示", style = MaterialTheme.typography.labelLarge)
+                }
+                Button(
+                    onClick = onProductClick,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueLight),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text("商品识别", style = MaterialTheme.typography.labelLarge)
+                }
+                Button(
+                    onClick = onTrafficLightClick,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Success),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Text("红绿灯", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -589,6 +613,68 @@ fun AnalyzeResultCard(
                 result.confidence * 100,
                 result.latencyMs
             )
+        )
+    }
+}
+
+@Composable
+fun SemanticResultCard(
+    result: com.omniveye.app.cloud.SemanticAnalyzeResponse,
+    resultSourceLabel: String?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(PrimaryBlueLight.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Photo,
+                    contentDescription = null,
+                    tint = PrimaryBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = buildString {
+                    append("视觉语义分析")
+                    if (!resultSourceLabel.isNullOrBlank()) {
+                        append(" · ")
+                        append(resultSourceLabel)
+                    }
+                },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        ResultCard(
+            title = "中文提醒",
+            content = result.summary
+        )
+
+        val detail = buildString {
+            append("模式 ${result.mode}，置信度 %.0f%%，耗时 %d ms".format(result.confidence * 100, result.latencyMs))
+            result.trafficLight?.let { append("，信号灯 $it") }
+            result.productName?.let { append("，商品 $it") }
+            if (result.objects.isNotEmpty()) {
+                append("，识别到 ")
+                append(result.objects.joinToString("、"))
+            }
+        }
+        ResultCard(
+            title = "语义结果",
+            content = detail
         )
     }
 }

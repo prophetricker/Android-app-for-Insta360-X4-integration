@@ -18,6 +18,14 @@ interface CloudApiService {
     ): Response<AnalyzeResponse>
 
     @Multipart
+    @POST("semantic-analyze")
+    suspend fun semanticAnalyze(
+        @Part frame: MultipartBody.Part,
+        @Part("mode") mode: RequestBody,
+        @Part("query") query: RequestBody? = null
+    ): Response<SemanticAnalyzeResponse>
+
+    @Multipart
     @POST("v1/image/upload")
     suspend fun uploadImage(
         @Part image: MultipartBody.Part,
@@ -61,6 +69,7 @@ object CloudEndpoints {
 
     const val ENDPOINT_HEALTH = "health"
     const val ENDPOINT_ANALYZE = "analyze"
+    const val ENDPOINT_SEMANTIC_ANALYZE = "semantic-analyze"
     const val ENDPOINT_IMAGE_UPLOAD = "v1/image/upload"
     const val ENDPOINT_IMAGE_STATUS = "v1/image/{imageId}"
     const val ENDPOINT_IMAGE_RESULT = "v1/image/{imageId}/result"
