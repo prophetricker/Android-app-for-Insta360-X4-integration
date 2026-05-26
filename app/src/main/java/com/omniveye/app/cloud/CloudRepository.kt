@@ -36,6 +36,13 @@ fun shouldRequireCellularRoute(isCameraFrame: Boolean): Boolean {
     )
 }
 
+fun selectCloudNetworkBinding(
+    source: AnalyzeFrameSource,
+    binding: CloudNetworkBinding?
+): CloudNetworkBinding? {
+    return if (shouldRequireCellularRoute(source)) binding else null
+}
+
 class CloudRepository(private val context: Context) {
 
     companion object {
@@ -61,8 +68,12 @@ class CloudRepository(private val context: Context) {
         return backendConfig.setBaseUrl(baseUrl)
     }
 
-    private fun createApiService(): CloudApiService {
-        val route = createCloudOkHttpClient(cellularNetworkProvider.currentBinding())
+    private fun createApiService(
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudApiService {
+        val route = createCloudOkHttpClient(
+            selectCloudNetworkBinding(source, cellularNetworkProvider.currentBinding())
+        )
 
         val retrofit = Retrofit.Builder()
             .baseUrl(backendConfig.getBaseUrl())
@@ -95,7 +106,6 @@ class CloudRepository(private val context: Context) {
     suspend fun checkHealth(): CloudResult<HealthCheckResponse> {
         return try {
             _state.value = CloudState.Connecting
-            waitForCellularRoute()
             if (USE_MOCK) {
                 kotlinx.coroutines.delay(500)
                 _state.value = CloudState.Connected
@@ -180,7 +190,7 @@ class CloudRepository(private val context: Context) {
             val framePart = createAnalyzeFramePart(file)
 
             _state.value = CloudState.Processing("云端 DAP 正在分析...")
-            val response = createApiService().analyzeFrame(framePart)
+            val response = createApiService(source).analyzeFrame(framePart)
 
             if (response.isSuccessful && response.body() != null) {
                 val analyzeResponse = response.body()!!
@@ -225,7 +235,7 @@ class CloudRepository(private val context: Context) {
             val queryPart = query?.takeIf { it.isNotBlank() }?.let(::createSemanticTextPart)
 
             _state.value = CloudState.Processing("云端视觉语义正在分析...")
-            val response = createApiService().semanticAnalyze(framePart, modePart, queryPart)
+            val response = createApiService(source).semanticAnalyze(framePart, modePart, queryPart)
 
             if (response.isSuccessful && response.body() != null) {
                 val semanticResponse = response.body()!!
