@@ -2,9 +2,6 @@ package com.omniveye.app.viewmodel
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -13,12 +10,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.omniveye.app.camera.CameraConnectionState
 import com.omniveye.app.camera.CameraManager
+import com.omniveye.app.cloud.AnalyzeFrameSource
 import com.omniveye.app.cloud.AnalyzeResponse
 import com.omniveye.app.cloud.CellularNetworkState
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
 import com.omniveye.app.cloud.VoiceProcessResponse
+import com.omniveye.app.demo.DevelopmentSampleFrame
 import com.omniveye.app.demo.RoadshowDemo
 import com.omniveye.app.feedback.roadshowVibrationDurationMs
 import com.omniveye.app.speech.SpeechRecognitionState
@@ -47,7 +46,7 @@ data class MainUiState(
     val lastCapturedBitmap: Bitmap? = null,
     val backendBaseUrl: String = "",
     val cellularNetworkState: CellularNetworkState = CellularNetworkState.Unavailable,
-    val demoSceneName: String? = null,
+    val resultSourceLabel: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val autoCaptureEnabled: Boolean = false
@@ -186,10 +185,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun capturePhoto() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, demoSceneName = null) }
+            _uiState.update { it.copy(isLoading = true, resultSourceLabel = null) }
 
             if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
-                uploadImage(createRoadshowDemoFrame(), isCameraFrame = false)
+                uploadImage(
+                    bitmap = DevelopmentSampleFrame.createBitmap(),
+                    source = AnalyzeFrameSource.DevelopmentSample,
+                    sourceLabel = DevelopmentSampleFrame.default.label
+                )
                 return@launch
             }
 
@@ -214,7 +217,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val bitmap = cameraManager.lastPhotoBitmap.value
             if (bitmap != null) {
-                uploadImage(bitmap, isCameraFrame = true)
+                uploadImage(
+                    bitmap = bitmap,
+                    source = AnalyzeFrameSource.CameraCapture,
+                    sourceLabel = "X4 实拍"
+                )
             } else {
                 _uiState.update {
                     it.copy(
@@ -226,13 +233,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun uploadImage(bitmap: Bitmap, isCameraFrame: Boolean = false) {
+    fun uploadImage(
+        bitmap: Bitmap,
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample,
+        sourceLabel: String? = null
+    ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, lastCapturedBitmap = bitmap) }
 
-            when (val result = cloudRepository.analyzeFrame(bitmap, isCameraFrame)) {
+            when (val result = cloudRepository.analyzeFrame(bitmap, source)) {
                 is CloudResult.Success -> {
-                    handleAnalyzeResult(result.data)
+                    handleAnalyzeResult(result.data, sourceLabel)
                 }
                 is CloudResult.Error -> {
                     _uiState.update {
@@ -246,13 +257,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleAnalyzeResult(result: AnalyzeResponse) {
+    private fun handleAnalyzeResult(result: AnalyzeResponse, sourceLabel: String?) {
         _uiState.update {
             it.copy(
                 isLoading = false,
                 analyzeResult = result,
                 processedResult = result.sceneText,
-                demoSceneName = null
+                resultSourceLabel = sourceLabel
             )
         }
         vibrateForAnalyzeResult(result)
@@ -267,7 +278,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isLoading = false,
                 analyzeResult = scene.response,
                 processedResult = scene.response.sceneText,
-                demoSceneName = scene.name,
+                resultSourceLabel = "路演演示：${scene.name}",
                 errorMessage = null
             )
         }
@@ -329,24 +340,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             @Suppress("DEPRECATION")
             vibrator?.vibrate(durationMs)
         }
-    }
-
-    private fun createRoadshowDemoFrame(): Bitmap {
-        val bitmap = Bitmap.createBitmap(1024, 512, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        paint.color = Color.rgb(35, 45, 55)
-        canvas.drawRect(0f, 0f, 1024f, 280f, paint)
-        paint.color = Color.rgb(95, 105, 85)
-        canvas.drawRect(0f, 280f, 1024f, 512f, paint)
-        paint.color = Color.rgb(160, 80, 70)
-        canvas.drawRect(430f, 230f, 590f, 500f, paint)
-        paint.color = Color.WHITE
-        paint.textSize = 36f
-        canvas.drawText("OmniEye Roadshow Frame", 320f, 80f, paint)
-
-        return bitmap
     }
 
     fun speakText(text: String) {

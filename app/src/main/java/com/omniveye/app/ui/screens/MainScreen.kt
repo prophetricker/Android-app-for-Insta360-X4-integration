@@ -190,7 +190,7 @@ fun MainScreen(
                 exit = fadeOut()
             ) {
                 uiState.analyzeResult?.let { result ->
-                    AnalyzeResultCard(result, uiState.demoSceneName)
+                    AnalyzeResultCard(result, uiState.resultSourceLabel)
                 }
             }
 
@@ -371,7 +371,7 @@ fun PhotoCaptureCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "拍摄或获取相机图片",
+                        text = if (isConnected) "拍摄 X4 图片并云端分析" else "未连接 X4，上传开发样张",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -406,7 +406,7 @@ fun PhotoCaptureCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            if (isConnected) "拍照" else "上传",
+                            if (isConnected) "拍照分析" else "样张分析",
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
@@ -424,7 +424,7 @@ fun PhotoCaptureCard(
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("路演演示", style = MaterialTheme.typography.labelLarge)
+                    Text("结果演示", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -536,7 +536,7 @@ fun VoiceInputSection(
 @Composable
 fun AnalyzeResultCard(
     result: com.omniveye.app.cloud.AnalyzeResponse,
-    demoSceneName: String?,
+    resultSourceLabel: String?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -564,7 +564,13 @@ fun AnalyzeResultCard(
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = if (demoSceneName == null) "云端避障分析" else "路演演示：$demoSceneName",
+                text = buildString {
+                    append("云端避障分析")
+                    if (!resultSourceLabel.isNullOrBlank()) {
+                        append(" · ")
+                        append(resultSourceLabel)
+                    }
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )

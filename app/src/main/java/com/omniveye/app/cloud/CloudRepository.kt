@@ -26,8 +26,14 @@ sealed class CloudResult<out T> {
     data class Error(val message: String) : CloudResult<Nothing>()
 }
 
+fun shouldRequireCellularRoute(source: AnalyzeFrameSource): Boolean {
+    return source == AnalyzeFrameSource.CameraCapture
+}
+
 fun shouldRequireCellularRoute(isCameraFrame: Boolean): Boolean {
-    return isCameraFrame
+    return shouldRequireCellularRoute(
+        if (isCameraFrame) AnalyzeFrameSource.CameraCapture else AnalyzeFrameSource.DevelopmentSample
+    )
 }
 
 class CloudRepository(private val context: Context) {
@@ -160,10 +166,13 @@ class CloudRepository(private val context: Context) {
         }
     }
 
-    suspend fun analyzeFrame(bitmap: Bitmap, isCameraFrame: Boolean = false): CloudResult<AnalyzeResponse> {
+    suspend fun analyzeFrame(
+        bitmap: Bitmap,
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudResult<AnalyzeResponse> {
         return try {
             _state.value = CloudState.Uploading(0)
-            if (shouldRequireCellularRoute(isCameraFrame) && !waitForCellularRoute()) {
+            if (shouldRequireCellularRoute(source) && !waitForCellularRoute()) {
                 throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
             }
 
@@ -185,6 +194,17 @@ class CloudRepository(private val context: Context) {
             _state.value = CloudState.Error("Analyze failed: ${e.message}")
             CloudResult.Error(e.message ?: "Unknown error")
         }
+    }
+
+    suspend fun analyzeFrame(bitmap: Bitmap, isCameraFrame: Boolean): CloudResult<AnalyzeResponse> {
+        return analyzeFrame(
+            bitmap = bitmap,
+            source = if (isCameraFrame) {
+                AnalyzeFrameSource.CameraCapture
+            } else {
+                AnalyzeFrameSource.DevelopmentSample
+            }
+        )
     }
 
     suspend fun processImage(imageId: String): CloudResult<ImageProcessResult> {
