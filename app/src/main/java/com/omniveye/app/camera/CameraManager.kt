@@ -76,6 +76,10 @@ private fun String.toJsonStringContent(): String =
 
 fun shouldAttemptX4OscConnection(isWifiEnabled: Boolean): Boolean = isWifiEnabled
 
+fun shouldTreatWifiAsEnabledForCamera(isWifiEnabled: Boolean, networkId: Int): Boolean {
+    return isWifiEnabled
+}
+
 class CameraManager(private val context: Context) {
 
     companion object {
@@ -227,7 +231,7 @@ class CameraManager(private val context: Context) {
         val isEnabled = wifiManager.isWifiEnabled
         val networkId = wifiManager.connectionInfo?.networkId ?: -1
         Log.d(TAG, "WiFi enabled: $isEnabled, networkId: $networkId")
-        return isEnabled && networkId != -1
+        return shouldTreatWifiAsEnabledForCamera(isEnabled, networkId)
     }
 
     private suspend fun checkCameraConnection(): Boolean {

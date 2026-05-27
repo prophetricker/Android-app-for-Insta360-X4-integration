@@ -1,8 +1,6 @@
 package com.omniveye.app.ui.screens
 
 import android.Manifest
-import android.content.Context
-import android.net.wifi.WifiManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -84,7 +82,6 @@ fun MainScreen(
     viewModel: MainViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     val audioPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
@@ -154,11 +151,7 @@ fun MainScreen(
                 cameraState = uiState.displayCameraState,
                 cloudState = uiState.cloudState,
                 onConnectClick = {
-                    if (checkWifiEnabled(context)) {
-                        viewModel.connectToCamera()
-                    } else {
-                        viewModel.clearError()
-                    }
+                    viewModel.connectToCamera()
                 },
                 onDisconnectClick = { viewModel.disconnectCamera() }
             )
@@ -321,11 +314,6 @@ fun CloudRouteStatus(
             fontWeight = FontWeight.Medium
         )
     }
-}
-
-private fun checkWifiEnabled(context: Context): Boolean {
-    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    return wifiManager.isWifiEnabled
 }
 
 @Composable

@@ -25,4 +25,9 @@ class CameraEndpointTest {
     fun attemptsX4OscConnectionWhenWifiIsEnabledEvenIfNetworkIdIsHidden() {
         assertTrue(shouldAttemptX4OscConnection(isWifiEnabled = true))
     }
+
+    @Test
+    fun treatsEnabledWifiAsEnoughToTryCameraConnectionOnHarmonyOs() {
+        assertTrue(shouldTreatWifiAsEnabledForCamera(isWifiEnabled = true, networkId = -1))
+    }
 }
