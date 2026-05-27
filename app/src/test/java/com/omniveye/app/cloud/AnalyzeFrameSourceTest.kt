@@ -10,6 +10,5 @@ class AnalyzeFrameSourceTest {
     fun onlyRealCameraCaptureRequiresCellularRoute() {
         assertTrue(shouldRequireCellularRoute(AnalyzeFrameSource.CameraCapture))
         assertFalse(shouldRequireCellularRoute(AnalyzeFrameSource.DevelopmentSample))
-        assertFalse(shouldRequireCellularRoute(AnalyzeFrameSource.RoadshowSynthetic))
     }
 }

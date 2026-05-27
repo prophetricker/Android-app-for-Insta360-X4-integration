@@ -316,7 +316,6 @@ class CameraManager(private val context: Context) {
     fun disconnect() {
         stopContinuousCapture()
         _connectionState.value = CameraConnectionState.Disconnected
-        _lastPhotoBitmap.value = null
         _photoList.value = emptyList()
         cameraSessionId = null
         Log.d(TAG, "Camera disconnected")

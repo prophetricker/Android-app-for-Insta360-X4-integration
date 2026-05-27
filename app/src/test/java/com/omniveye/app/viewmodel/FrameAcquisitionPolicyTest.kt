@@ -27,10 +27,20 @@ class FrameAcquisitionPolicyTest {
     }
 
     @Test
-    fun surroundingsUsesDevelopmentSampleWhenCameraIsNotConnected() {
+    fun surroundingsUsesLatestCameraFrameWhenCameraDisconnectsAfterCapture() {
         val plan = selectSurroundingsFramePlan(
             cameraState = CameraConnectionState.Disconnected,
             hasLatestCameraFrame = true
+        )
+
+        assertEquals(FrameAcquisitionPlan.UseLatestCameraFrame, plan)
+    }
+
+    @Test
+    fun surroundingsUsesDevelopmentSampleWhenCameraIsNotConnectedAndNoCachedFrame() {
+        val plan = selectSurroundingsFramePlan(
+            cameraState = CameraConnectionState.Disconnected,
+            hasLatestCameraFrame = false
         )
 
         assertEquals(FrameAcquisitionPlan.UseDevelopmentSample, plan)

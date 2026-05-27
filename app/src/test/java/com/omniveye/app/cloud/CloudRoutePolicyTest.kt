@@ -21,9 +21,8 @@ class CloudRoutePolicyTest {
     }
 
     @Test
-    fun developmentAndRoadshowSourcesUseDefaultRoute() {
+    fun developmentSampleUsesDefaultRoute() {
         assertFalse(shouldRequireCellularRoute(AnalyzeFrameSource.DevelopmentSample))
-        assertFalse(shouldRequireCellularRoute(AnalyzeFrameSource.RoadshowSynthetic))
     }
 
     @Test
@@ -48,6 +47,5 @@ class CloudRoutePolicyTest {
 
         assertSame(binding, selectCloudNetworkBinding(AnalyzeFrameSource.CameraCapture, binding))
         assertNull(selectCloudNetworkBinding(AnalyzeFrameSource.DevelopmentSample, binding))
-        assertNull(selectCloudNetworkBinding(AnalyzeFrameSource.RoadshowSynthetic, binding))
     }
 }

@@ -30,4 +30,10 @@ class VoiceCommandRouterTest {
         assertEquals(VoiceCommandAction.Unknown, routeVoiceCommand("今天天气怎么样"))
         assertEquals(VoiceCommandAction.Unknown, routeVoiceCommand(""))
     }
+
+    @Test
+    fun routesPanoramaEnvironmentCommandsToSurroundings() {
+        assertEquals(VoiceCommandAction.Surroundings, routeVoiceCommand("看看周围环境"))
+        assertEquals(VoiceCommandAction.Surroundings, routeVoiceCommand("帮我观察一下周围"))
+    }
 }

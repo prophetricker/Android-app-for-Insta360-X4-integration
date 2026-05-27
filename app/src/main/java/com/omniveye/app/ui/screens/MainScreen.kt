@@ -177,8 +177,8 @@ fun MainScreen(
                 recognizedText = uiState.recognizedText,
                 hasAudioPermission = audioPermissionState.status.isGranted,
                 onRequestPermission = { audioPermissionState.launchPermissionRequest() },
-                onStartListening = { viewModel.handleDemoCommandVolumePress() },
-                onStopListening = { viewModel.handleDemoCommandVolumePress() }
+                onStartListening = { viewModel.startListening() },
+                onStopListening = { viewModel.stopListening() }
             )
 
             AnimatedVisibility(
@@ -490,14 +490,6 @@ fun VoiceInputSection(
                     onStartListening = onStartListening,
                     onStopListening = onStopListening
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onStartListening,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueLight)
-                ) {
-                    Text("模拟音量下键", style = MaterialTheme.typography.labelLarge)
-                }
             }
 
             if (recognizedText.isNotBlank()) {
