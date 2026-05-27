@@ -9,11 +9,17 @@ import com.omniveye.app.camera.CameraManager
 import com.omniveye.app.cloud.CloudRepository
 import com.omniveye.app.cloud.CloudResult
 import com.omniveye.app.cloud.CloudState
+import com.omniveye.app.cloud.GitHubConfig
+import com.omniveye.app.cloud.GitHubStorageManager
+import com.omniveye.app.cloud.GitHubApiService
+import com.omniveye.app.cloud.GitHubUploadResult
+import com.omniveye.app.cloud.UploadProgress
 import com.omniveye.app.cloud.VoiceProcessResponse
 import com.omniveye.app.speech.SpeechRecognitionState
-import com.omniveye.app.speech.SpeechToTextManager
+import com.omniveye.app.speech.VoskSpeechManager
 import com.omniveye.app.speech.TtsState
 import com.omniveye.app.speech.TextToSpeechManager
+import okhttp3.OkHttpClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -38,15 +44,23 @@ data class MainUiState(
     val errorMessage: String? = null,
     val autoCaptureEnabled: Boolean = false,
     val autoCaptureIntervalMs: Long = 500,
-    val totalPhotosCaptured: Int = 0
+    val totalPhotosCaptured: Int = 0,
+    val githubUploadProgress: UploadProgress = UploadProgress.Idle,
+    val lastUploadResult: GitHubUploadResult? = null,
+    val uploadHistory: List<GitHubUploadResult> = emptyList(),
+    val isGithubConfigured: Boolean = false,
+    val voskModelReady: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val cameraManager = CameraManager(application)
-    private val speechToTextManager = SpeechToTextManager(application)
+    private val speechToTextManager = VoskSpeechManager(application)
     private val textToSpeechManager = TextToSpeechManager(application)
     private val cloudRepository = CloudRepository(application)
+
+    private var gitHubStorageManager: GitHubStorageManager? = null
+    private lateinit var gitHubConfig: GitHubConfig
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -61,6 +75,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun initializeManagers() {
         speechToTextManager.initialize()
         textToSpeechManager.initialize()
+
+        gitHubConfig = GitHubConfig.getInstance(getApplication())
+        val isConfigured = GitHubConfig.isConfigured(gitHubConfig)
+        _uiState.update { it.copy(isGithubConfigured = isConfigured) }
+
+        if (isConfigured) {
+            val client = OkHttpClient.Builder().build()
+            val apiService = GitHubApiService(gitHubConfig, client)
+            gitHubStorageManager = GitHubStorageManager(gitHubConfig, apiService)
+        } else {
+            gitHubStorageManager = null
+        }
 
         viewModelScope.launch {
             cloudRepository.checkHealth()
@@ -92,6 +118,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             speechToTextManager.recognitionState.collect { state ->
                 _uiState.update { it.copy(speechRecognitionState = state) }
+            }
+        }
+
+        viewModelScope.launch {
+            speechToTextManager.isModelReady.collect { ready ->
+                _uiState.update { it.copy(voskModelReady = ready) }
             }
         }
 
@@ -128,13 +160,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cameraManager.checkCameraWiFiConnection()
     }
 
+    fun configureGitHub(token: String, owner: String, repo: String, branch: String = "main") {
+        val config = GitHubConfig(
+            token = token,
+            owner = owner,
+            repo = repo,
+            branch = branch
+        )
+        GitHubConfig.saveToPrefs(getApplication(), config)
+        _uiState.update { it.copy(isGithubConfigured = true) }
+        val client = OkHttpClient.Builder().build()
+        val apiService = GitHubApiService(config, client)
+        gitHubStorageManager = GitHubStorageManager(config, apiService)
+    }
+
+    fun captureAndUploadToGitHub() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(githubUploadProgress = UploadProgress.Preparing("连接相机...")) }
+
+            if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
+                cameraManager.connectToCamera()
+                delay(2000)
+            }
+
+            if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
+                _uiState.update { it.copy(
+                    githubUploadProgress = UploadProgress.Error("相机未连接")
+                )}
+                return@launch
+            }
+
+            _uiState.update { it.copy(githubUploadProgress = UploadProgress.Preparing("拍照中...")) }
+
+            val result = cameraManager.capturePhotoForCloud()
+            val bitmap = cameraManager.capturedPhotoBitmapOnly.value
+
+            if (bitmap != null && gitHubStorageManager != null) {
+                _uiState.update { it.copy(
+                    githubUploadProgress = UploadProgress.Uploading(50, "上传中...")
+                )}
+
+                val uploadResult = gitHubStorageManager!!.uploadImage(bitmap)
+
+                if (uploadResult.success) {
+                    _uiState.update { state ->
+                        state.copy(
+                            githubUploadProgress = UploadProgress.Success(uploadResult),
+                            lastUploadResult = uploadResult,
+                            uploadHistory = state.uploadHistory + uploadResult
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(
+                        githubUploadProgress = UploadProgress.Error(uploadResult.errorMessage ?: "上传失败")
+                    )}
+                }
+            } else {
+                _uiState.update { it.copy(
+                    githubUploadProgress = UploadProgress.Error("拍照失败")
+                )}
+            }
+        }
+    }
+
+    fun clearUploadProgress() {
+        _uiState.update { it.copy(githubUploadProgress = UploadProgress.Idle) }
+    }
+
     fun startAutoCapture() {
         if (_uiState.value.autoCaptureEnabled) return
         autoCaptureJob?.cancel()
         autoCaptureJob = viewModelScope.launch {
             _uiState.update { it.copy(autoCaptureEnabled = true, totalPhotosCaptured = 0) }
             while (isActive) {
-                capturePhotoAndUpload()
+                captureAndUploadToGitHub()
                 delay(_uiState.value.autoCaptureIntervalMs)
             }
         }

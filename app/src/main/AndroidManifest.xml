@@ -31,15 +31,9 @@
     <!-- Nearby devices permission (Android 13+) -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
-    <!-- Speech Recognition queries (required for Android 11+) -->
+    <!-- Speech Recognition - now uses Vosk offline (no queries needed) -->
+    <!-- TTS query (still uses Android TTS) -->
     <queries>
-        <package android:name="com.google.android.googlequicksearchbox"/>
-        <intent>
-            <action android:name="android.speech.RecognitionService" />
-        </intent>
-        <intent>
-            <action android:name="android.speech.SpeechRecognitionService" />
-        </intent>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>

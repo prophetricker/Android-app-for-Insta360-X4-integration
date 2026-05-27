@@ -98,6 +98,9 @@ dependencies {
     // Accompanist Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    // Vosk Offline Speech Recognition (group: com.alphacephei not com.alphacep)
+    implementation("com.alphacephei:vosk-android:0.3.47")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

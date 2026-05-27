@@ -3,6 +3,9 @@ package com.omniveye.app.ui.screens
 import android.Manifest
 import android.content.Context
 import android.net.wifi.WifiManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,12 +24,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -51,6 +63,8 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.omniveye.app.camera.CameraConnectionState
+import com.omniveye.app.cloud.GitHubUploadResult
+import com.omniveye.app.cloud.UploadProgress
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.ui.components.CameraStatusCard
 import com.omniveye.app.ui.components.VoiceInputButton
@@ -148,9 +162,19 @@ fun MainScreen(
                 onDisconnectClick = { viewModel.disconnectCamera() }
             )
 
+            // GitHub上传状态
+            if (uiState.githubUploadProgress !is UploadProgress.Idle || uiState.lastUploadResult != null) {
+                GitHubUploadStatusCard(
+                    uploadProgress = uiState.githubUploadProgress,
+                    lastResult = uiState.lastUploadResult,
+                    onDismiss = { viewModel.clearUploadProgress() }
+                )
+            }
+
             VoiceInputSection(
                 recognitionState = uiState.speechRecognitionState,
                 hasAudioPermission = audioPermissionState.status.isGranted,
+                modelReady = uiState.voskModelReady,
                 onRequestPermission = { audioPermissionState.launchPermissionRequest() },
                 onStartListening = { viewModel.startListening() },
                 onStopListening = { viewModel.stopListening() }
@@ -162,6 +186,30 @@ fun MainScreen(
                 onSpeakClick = { viewModel.speakText(uiState.processedResult) },
                 onStopClick = { viewModel.stopSpeaking() }
             )
+
+            // 操作按钮区域
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 拍照并上传到GitHub
+                Button(
+                    onClick = { viewModel.captureAndUploadToGitHub() },
+                    enabled = uiState.cameraState is CameraConnectionState.Connected &&
+                              !uiState.isLoading &&
+                              uiState.isGithubConfigured,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF24292E) // GitHub dark color
+                    )
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("上传GitHub")
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -177,6 +225,7 @@ private fun checkWifiEnabled(context: Context): Boolean {
 fun VoiceInputSection(
     recognitionState: SpeechRecognitionState,
     hasAudioPermission: Boolean,
+    modelReady: Boolean,
     onRequestPermission: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
@@ -233,6 +282,22 @@ fun VoiceInputSection(
                 ) {
                     Text("授予麦克风权限", style = MaterialTheme.typography.labelLarge)
                 }
+            } else if (!modelReady) {
+                // Vosk model is still loading
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = PrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "正在下载语音模型...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 VoiceInputButton(
                     state = recognitionState,
@@ -269,6 +334,136 @@ fun VoiceInputSection(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GitHubUploadStatusCard(
+    uploadProgress: UploadProgress,
+    lastResult: GitHubUploadResult?,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when (uploadProgress) {
+                is UploadProgress.Success -> Color(0xFF4CAF50).copy(alpha = 0.1f)
+                is UploadProgress.Error -> Color(0xFFF44336).copy(alpha = 0.1f)
+                is UploadProgress.Uploading -> Color(0xFF2196F3).copy(alpha = 0.1f)
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = when (uploadProgress) {
+                            is UploadProgress.Success -> Icons.Default.CloudDone
+                            is UploadProgress.Error -> Icons.Default.CloudOff
+                            is UploadProgress.Uploading -> Icons.Default.CloudUpload
+                            is UploadProgress.Preparing -> Icons.Default.CloudSync
+                            else -> Icons.Default.Cloud
+                        },
+                        contentDescription = null,
+                        tint = when (uploadProgress) {
+                            is UploadProgress.Success -> Color(0xFF4CAF50)
+                            is UploadProgress.Error -> Color(0xFFF44336)
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "GitHub 上传",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                if (uploadProgress is UploadProgress.Success || uploadProgress is UploadProgress.Error) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "关闭")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when (uploadProgress) {
+                is UploadProgress.Idle -> {
+                    Text(
+                        text = "等待上传...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                is UploadProgress.Preparing -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uploadProgress.message,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+                is UploadProgress.Uploading -> {
+                    Column {
+                        Text(
+                            text = "上传中: ${uploadProgress.fileName}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { uploadProgress.progress / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = "${uploadProgress.progress}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.align(Alignment.End)
+                        )
+                    }
+                }
+                is UploadProgress.Success -> {
+                    Column {
+                        Text(
+                            text = "上传成功!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF4CAF50)
+                        )
+                        uploadProgress.result.downloadUrl?.let { url ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "文件名: ${uploadProgress.result.fileName}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "路径: ${uploadProgress.result.filePath}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+                is UploadProgress.Error -> {
+                    Text(
+                        text = "错误: ${uploadProgress.message}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFF44336)
+                    )
                 }
             }
         }

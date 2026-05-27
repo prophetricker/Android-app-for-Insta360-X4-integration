@@ -44,6 +44,12 @@ sealed class CameraOperationResult {
     data class Error(val message: String) : CameraOperationResult()
 }
 
+sealed class PhotoCaptureDestination {
+    data object Local : PhotoCaptureDestination()
+    data object Cloud : PhotoCaptureDestination()
+    data object Both : PhotoCaptureDestination()
+}
+
 class CameraManager(private val context: Context) {
 
     companion object {
@@ -87,6 +93,9 @@ class CameraManager(private val context: Context) {
 
     private val _lastSavedPhotoPath = MutableStateFlow<String?>(null)
     val lastSavedPhotoPath: StateFlow<String?> = _lastSavedPhotoPath.asStateFlow()
+
+    private val _capturedPhotoBitmapOnly = MutableStateFlow<Bitmap?>(null)
+    val capturedPhotoBitmapOnly: StateFlow<Bitmap?> = _capturedPhotoBitmapOnly.asStateFlow()
 
     private var isWiFiConnected = false
     private var continuousCaptureJob: Job? = null
@@ -265,7 +274,7 @@ class CameraManager(private val context: Context) {
         Log.d(TAG, "Camera disconnected")
     }
 
-    suspend fun takePhoto(): CameraOperationResult {
+    suspend fun takePhoto(destination: PhotoCaptureDestination = PhotoCaptureDestination.Local): CameraOperationResult {
         if (_connectionState.value != CameraConnectionState.Connected) {
             return CameraOperationResult.Error("Camera not connected")
         }
@@ -276,8 +285,8 @@ class CameraManager(private val context: Context) {
 
         _isTakingPhoto.value = true
         return try {
-            Log.d(TAG, "Taking photo...")
-            val result = capturePhoto()
+            Log.d(TAG, "Taking photo with destination: $destination")
+            val result = capturePhoto(destination)
             when (result) {
                 is CameraOperationResult.Success -> {
                     _capturedPhotoCount.value++
@@ -292,7 +301,11 @@ class CameraManager(private val context: Context) {
         }
     }
 
-    private suspend fun capturePhoto(): CameraOperationResult = withContext(Dispatchers.IO) {
+    suspend fun capturePhotoForCloud(): CameraOperationResult {
+        return takePhoto(PhotoCaptureDestination.Cloud)
+    }
+
+    private suspend fun capturePhoto(destination: PhotoCaptureDestination = PhotoCaptureDestination.Local): CameraOperationResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Sending takePicture command...")
 
@@ -326,17 +339,17 @@ class CameraManager(private val context: Context) {
             val id = jsonResponse.optString("id", null)
             if (id != null && jsonResponse.optString("state", "") == "inProgress") {
                 Log.d(TAG, "Photo capture in progress, polling for result...")
-                return@withContext pollForPhotoResult(id)
+                return@withContext pollForPhotoResult(id, destination)
             }
 
             // Handle sync response (state: "done")
             if (jsonResponse.optString("state", "") == "done" && jsonResponse.has("results")) {
-                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"))
+                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"), destination)
             }
 
             // Fallback: try to get results directly
             if (jsonResponse.has("results")) {
-                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"))
+                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"), destination)
             }
 
             Log.w(TAG, "Unexpected response format: $response")
@@ -368,7 +381,7 @@ class CameraManager(private val context: Context) {
         }
     }
 
-    private suspend fun pollForPhotoResult(commandId: String): CameraOperationResult = withContext(Dispatchers.IO) {
+    private suspend fun pollForPhotoResult(commandId: String, destination: PhotoCaptureDestination): CameraOperationResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Polling for command result, id: $commandId")
 
@@ -389,7 +402,7 @@ class CameraManager(private val context: Context) {
                 when (state) {
                     "done" -> {
                         if (jsonResponse.has("results")) {
-                            return@withContext processPhotoResults(jsonResponse.getJSONObject("results"))
+                            return@withContext processPhotoResults(jsonResponse.getJSONObject("results"), destination)
                         }
                     }
                     "error" -> {
@@ -416,7 +429,7 @@ class CameraManager(private val context: Context) {
         }
     }
 
-    private fun processPhotoResults(results: JSONObject): CameraOperationResult {
+    private fun processPhotoResults(results: JSONObject, destination: PhotoCaptureDestination): CameraOperationResult {
         // Try different possible field names for file URL
         val fileUrl = results.optString("fileUrl",
             results.optString("fileUri",
@@ -432,14 +445,7 @@ class CameraManager(private val context: Context) {
                 if (bitmap != null) {
                     _lastPhotoBitmap.value = bitmap
                     _photoList.value = _photoList.value + actualUrl
-                    // Save to gallery
-                    val savedPath = saveBitmapToGallery(bitmap)
-                    if (savedPath != null) {
-                        return CameraOperationResult.Success(bitmap, savedPath)
-                    } else {
-                        Log.e(TAG, "Failed to save photo to gallery")
-                        return CameraOperationResult.Error("Failed to save photo to gallery")
-                    }
+                    return handlePhotoDestination(bitmap, destination)
                 }
             }
 
@@ -452,16 +458,37 @@ class CameraManager(private val context: Context) {
         if (bitmap != null) {
             _lastPhotoBitmap.value = bitmap
             _photoList.value = _photoList.value + fileUrl
-            // Save to gallery
-            val savedPath = saveBitmapToGallery(bitmap)
-            if (savedPath != null) {
-                return CameraOperationResult.Success(bitmap, savedPath)
-            } else {
-                Log.e(TAG, "Failed to save photo to gallery")
-                return CameraOperationResult.Error("Failed to save photo to gallery")
-            }
+            return handlePhotoDestination(bitmap, destination)
         } else {
             return CameraOperationResult.Error("Failed to download photo")
+        }
+    }
+
+    private fun handlePhotoDestination(bitmap: Bitmap, destination: PhotoCaptureDestination): CameraOperationResult {
+        when (destination) {
+            PhotoCaptureDestination.Cloud -> {
+                _capturedPhotoBitmapOnly.value = bitmap
+                return CameraOperationResult.Success(bitmap, null)
+            }
+            PhotoCaptureDestination.Local -> {
+                val savedPath = saveBitmapToGallery(bitmap)
+                if (savedPath != null) {
+                    return CameraOperationResult.Success(bitmap, savedPath)
+                } else {
+                    Log.e(TAG, "Failed to save photo to gallery")
+                    return CameraOperationResult.Error("Failed to save photo to gallery")
+                }
+            }
+            PhotoCaptureDestination.Both -> {
+                _capturedPhotoBitmapOnly.value = bitmap
+                val savedPath = saveBitmapToGallery(bitmap)
+                if (savedPath != null) {
+                    return CameraOperationResult.Success(bitmap, savedPath)
+                } else {
+                    Log.e(TAG, "Failed to save photo to gallery")
+                    return CameraOperationResult.Error("Failed to save photo to gallery")
+                }
+            }
         }
     }
 
