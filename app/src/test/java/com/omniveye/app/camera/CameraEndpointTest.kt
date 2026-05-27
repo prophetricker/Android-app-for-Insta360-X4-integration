@@ -22,6 +22,11 @@ class CameraEndpointTest {
     }
 
     @Test
+    fun x4OscCommandExecuteUsesDedicatedExecuteEndpoint() {
+        assertEquals("http://192.168.42.1:80/osc/commands/execute", x4OscCommandExecuteUrl())
+    }
+
+    @Test
     fun attemptsX4OscConnectionWhenWifiIsEnabledEvenIfNetworkIdIsHidden() {
         assertTrue(shouldAttemptX4OscConnection(isWifiEnabled = true))
     }

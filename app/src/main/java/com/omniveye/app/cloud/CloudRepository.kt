@@ -30,6 +30,14 @@ fun shouldRequireCellularRoute(source: AnalyzeFrameSource): Boolean {
     return source == AnalyzeFrameSource.CameraCapture
 }
 
+enum class CloudRequestKind {
+    HealthCheck
+}
+
+fun shouldRequireCellularRoute(kind: CloudRequestKind): Boolean {
+    return kind == CloudRequestKind.HealthCheck
+}
+
 fun shouldRequireCellularRoute(isCameraFrame: Boolean): Boolean {
     return shouldRequireCellularRoute(
         if (isCameraFrame) AnalyzeFrameSource.CameraCapture else AnalyzeFrameSource.DevelopmentSample
@@ -74,6 +82,33 @@ class CloudRepository(private val context: Context) {
         val route = createCloudOkHttpClient(
             selectCloudNetworkBinding(source, cellularNetworkProvider.currentBinding())
         )
+        Log.d(
+            TAG,
+            "Creating cloud API service: url=${backendConfig.getBaseUrl()}, source=$source, cellularBound=${route.usesBoundNetwork}"
+        )
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl(backendConfig.getBaseUrl())
+            .client(route.client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        return retrofit.create(CloudApiService::class.java)
+    }
+
+    private fun createApiService(
+        kind: CloudRequestKind
+    ): CloudApiService {
+        val binding = if (shouldRequireCellularRoute(kind)) {
+            cellularNetworkProvider.currentBinding()
+        } else {
+            null
+        }
+        val route = createCloudOkHttpClient(binding)
+        Log.d(
+            TAG,
+            "Creating cloud API service: url=${backendConfig.getBaseUrl()}, kind=$kind, cellularBound=${route.usesBoundNetwork}"
+        )
 
         val retrofit = Retrofit.Builder()
             .baseUrl(backendConfig.getBaseUrl())
@@ -117,7 +152,10 @@ class CloudRepository(private val context: Context) {
                     )
                 )
             } else {
-                val response = createApiService().healthCheck()
+                if (shouldRequireCellularRoute(CloudRequestKind.HealthCheck) && !waitForCellularRoute()) {
+                    throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
+                }
+                val response = createApiService(CloudRequestKind.HealthCheck).healthCheck()
                 if (response.isSuccessful && response.body()?.ok == true) {
                     _state.value = CloudState.Connected
                     CloudResult.Success(
@@ -132,7 +170,11 @@ class CloudRepository(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Health check failed", e)
+            Log.e(
+                TAG,
+                "Health check failed for ${backendConfig.getBaseUrl()}: ${e.javaClass.simpleName}: ${e.message}",
+                e
+            )
             _state.value = CloudState.Error("Connection failed: ${e.message}")
             CloudResult.Error(e.message ?: "Unknown error")
         }

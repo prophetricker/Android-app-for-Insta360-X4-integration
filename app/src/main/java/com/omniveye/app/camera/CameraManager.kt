@@ -46,6 +46,8 @@ sealed class CameraOperationResult {
 
 fun x4OscInfoUrl(): String = "http://192.168.42.1:80/osc/info"
 
+fun x4OscCommandExecuteUrl(): String = "http://192.168.42.1:80/osc/commands/execute"
+
 fun x4OscCommandStatusUrl(): String = "http://192.168.42.1:80/osc/commands/status"
 
 fun x4OscCommandStatusBody(commandId: String): String =
@@ -91,6 +93,7 @@ class CameraManager(private val context: Context) {
 
         private const val OSC_INFO_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/info"
         private const val OSC_COMMAND_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/commands/execute"
+        private const val OSC_COMMAND_STATUS_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/commands/status"
         private const val OSC_STATE_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/state"
         private const val OSC_THUMBNAILS_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/thumbnails"
         private const val OSC_FILES_URL = "http://$DEFAULT_CAMERA_IP:$CAMERA_PORT/osc/files"
@@ -344,7 +347,7 @@ class CameraManager(private val context: Context) {
                 })
             }
 
-            val response = sendOscCommand(jsonBody.toString())
+            val response = sendOscExecuteCommand(jsonBody.toString())
             Log.d(TAG, "Take picture initial response: $response")
 
             val jsonResponse = JSONObject(response)
@@ -411,12 +414,9 @@ class CameraManager(private val context: Context) {
             for (attempt in 1..MAX_POLL_ATTEMPTS) {
                 delay(POLL_INTERVAL_MS)
 
-                val statusBody = JSONObject().apply {
-                    put("name", "camera.takePicture")
-                    put("id", commandId)
-                }
+                val statusBody = x4OscCommandStatusBody(commandId)
 
-                val response = sendOscCommand(statusBody.toString())
+                val response = sendOscStatusCommand(statusBody)
                 val jsonResponse = JSONObject(response)
 
                 val state = jsonResponse.optString("state", "")
@@ -533,8 +533,16 @@ class CameraManager(private val context: Context) {
         Log.d(TAG, "Stopped continuous capture. Total photos: ${_capturedPhotoCount.value}")
     }
 
-    private fun sendOscCommand(body: String): String {
-        val url = URL(OSC_COMMAND_URL)
+    private fun sendOscExecuteCommand(body: String): String {
+        return sendOscPost(OSC_COMMAND_URL, body)
+    }
+
+    private fun sendOscStatusCommand(body: String): String {
+        return sendOscPost(OSC_COMMAND_STATUS_URL, body)
+    }
+
+    private fun sendOscPost(endpoint: String, body: String): String {
+        val url = URL(endpoint)
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.doOutput = true
@@ -545,7 +553,7 @@ class CameraManager(private val context: Context) {
         connection.connectTimeout = CONNECT_TIMEOUT
         connection.readTimeout = READ_TIMEOUT
 
-        Log.d(TAG, "Sending OSC command: $body")
+        Log.d(TAG, "Sending OSC POST $endpoint: $body")
 
         connection.outputStream.use { os ->
             os.write(body.toByteArray())
@@ -564,7 +572,7 @@ class CameraManager(private val context: Context) {
             throw Exception("HTTP error: $responseCode")
         }
 
-        Log.d(TAG, "OSC command response: $response")
+        Log.d(TAG, "OSC POST response: $response")
         return response
     }
 

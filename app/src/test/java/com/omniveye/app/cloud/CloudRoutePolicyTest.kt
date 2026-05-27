@@ -32,6 +32,11 @@ class CloudRoutePolicyTest {
     }
 
     @Test
+    fun cloudHealthCheckRequiresCellularRoute() {
+        assertTrue(shouldRequireCellularRoute(CloudRequestKind.HealthCheck))
+    }
+
+    @Test
     fun onlyCameraCaptureSelectsAvailableCellularBinding() {
         val binding = object : CloudNetworkBinding {
             override val socketFactory: SocketFactory = SocketFactory.getDefault()
