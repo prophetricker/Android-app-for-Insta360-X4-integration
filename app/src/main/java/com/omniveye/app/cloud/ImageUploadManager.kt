@@ -18,6 +18,7 @@ class ImageUploadManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ImageUploadManager"
+        private const val PERF_TAG = "PerfMetrics"
         private const val MAX_IMAGE_SIZE = 1920
         private const val COMPRESSION_QUALITY = 85
     }
@@ -110,6 +111,54 @@ class ImageUploadManager(private val context: Context) {
             "mimeType" to (options.outMimeType ?: "unknown"),
             "fileSize" to file.length(),
             "fileName" to file.name
+        )
+    }
+
+    fun compressWithQuality(bitmap: Bitmap, quality: UploadQuality): CompressionResult {
+        val startTime = System.currentTimeMillis()
+
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
+        val maxDimension = quality.maxDimension
+        val jpegQuality = quality.jpegQuality
+
+        val scaledBitmap = if (originalWidth > maxDimension || originalHeight > maxDimension) {
+            val ratio = originalWidth.toFloat() / originalHeight.toFloat()
+            val newWidth: Int
+            val newHeight: Int
+
+            if (originalWidth > originalHeight) {
+                newWidth = maxDimension
+                newHeight = (maxDimension / ratio).toInt()
+            } else {
+                newHeight = maxDimension
+                newWidth = (maxDimension * ratio).toInt()
+            }
+
+            Log.d(PERF_TAG, "Quality=${quality.name}: Resizing ${originalWidth}x${originalHeight} to ${newWidth}x${newHeight}")
+            Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        } else {
+            bitmap
+        }
+
+        val outputStream = ByteArrayOutputStream()
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, outputStream)
+        val jpegBytes = outputStream.toByteArray()
+
+        val endTime = System.currentTimeMillis()
+        val compressionMs = endTime - startTime
+
+        Log.d(PERF_TAG, "Compression completed in ${compressionMs}ms: ${jpegBytes.size} bytes, " +
+                "quality=${quality.name}, maxDimension=${quality.maxDimension}, jpegQuality=${quality.jpegQuality}")
+
+        return CompressionResult(
+            originalWidth = originalWidth,
+            originalHeight = originalHeight,
+            compressedWidth = scaledBitmap.width,
+            compressedHeight = scaledBitmap.height,
+            jpegSizeBytes = jpegBytes.size,
+            compressionMs = compressionMs,
+            quality = quality
         )
     }
 

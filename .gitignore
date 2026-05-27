@@ -86,3 +86,22 @@ captures/
 
 # Insta360 SDK (contains proprietary libraries)
 Insta360 X4 SDK/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.venv
+venv/
+ENV/

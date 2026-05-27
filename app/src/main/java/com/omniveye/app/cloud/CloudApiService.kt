@@ -17,6 +17,22 @@ interface CloudApiService {
         @Part("description") description: RequestBody? = null
     ): Response<ApiResponse<ImageUploadResponse>>
 
+    @Multipart
+    @POST("v1/image/analyze")
+    suspend fun analyzeImage(
+        @Header("X-Upload-Quality") uploadQuality: String,
+        @Part image: MultipartBody.Part,
+        @Part("description") description: RequestBody? = null
+    ): Response<ApiResponse<ImageProcessResult>>
+
+    @Multipart
+    @POST("v1/image/semantic-analyze")
+    suspend fun semanticAnalyzeImage(
+        @Header("X-Upload-Quality") uploadQuality: String,
+        @Part image: MultipartBody.Part,
+        @Part("description") description: RequestBody? = null
+    ): Response<ApiResponse<ImageProcessResult>>
+
     @GET("v1/image/{imageId}")
     suspend fun getImageStatus(
         @Path("imageId") imageId: String
@@ -47,13 +63,50 @@ interface CloudApiService {
     suspend fun getTtsStatus(
         @Path("requestId") requestId: String
     ): Response<ApiResponse<TtsResponse>>
+
+    @Multipart
+    @POST("analyze")
+    suspend fun fastAnalyzeImage(
+        @Part image: MultipartBody.Part,
+        @Header("X-Upload-Quality") quality: String? = null
+    ): Response<AnalyzeResponse>
+
+    @Multipart
+    @POST("semantic-analyze")
+    suspend fun fastSemanticAnalyzeImage(
+        @Part image: MultipartBody.Part,
+        @Part("mode") mode: RequestBody? = null,
+        @Header("X-Upload-Quality") quality: String? = null
+    ): Response<SemanticAnalyzeResponse>
 }
+
+data class AnalyzeResponse(
+    val distance_m: Double,
+    val level: String,
+    val confidence: Double,
+    val scene_text: String,
+    val latency_ms: Double
+)
+
+data class SemanticAnalyzeResponse(
+    val mode: String,
+    val summary: String,
+    val objects: List<String>,
+    val traffic_light: String,
+    val target_found: Boolean,
+    val product_name: String,
+    val confidence: Double,
+    val latency_ms: Double,
+    val fallback_reason: String?
+)
 
 object CloudEndpoints {
     const val BASE_URL = "https://api.omniveye.example.com/"
 
     const val ENDPOINT_HEALTH = "health"
     const val ENDPOINT_IMAGE_UPLOAD = "v1/image/upload"
+    const val ENDPOINT_IMAGE_ANALYZE = "v1/image/analyze"
+    const val ENDPOINT_IMAGE_SEMANTIC_ANALYZE = "v1/image/semantic-analyze"
     const val ENDPOINT_IMAGE_STATUS = "v1/image/{imageId}"
     const val ENDPOINT_IMAGE_RESULT = "v1/image/{imageId}/result"
     const val ENDPOINT_IMAGE_PROCESS = "v1/image/{imageId}/process"
