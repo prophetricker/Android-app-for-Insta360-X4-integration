@@ -6,16 +6,10 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.logging.HttpLoggingInterceptor
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.io.File
-import java.util.concurrent.TimeUnit
 
 sealed class CloudState {
     data object Idle : CloudState()
@@ -32,52 +26,81 @@ sealed class CloudResult<out T> {
     data class Error(val message: String) : CloudResult<Nothing>()
 }
 
+fun shouldRequireCellularRoute(source: AnalyzeFrameSource): Boolean {
+    return source == AnalyzeFrameSource.CameraCapture
+}
+
+fun shouldRequireCellularRoute(isCameraFrame: Boolean): Boolean {
+    return shouldRequireCellularRoute(
+        if (isCameraFrame) AnalyzeFrameSource.CameraCapture else AnalyzeFrameSource.DevelopmentSample
+    )
+}
+
+fun selectCloudNetworkBinding(
+    source: AnalyzeFrameSource,
+    binding: CloudNetworkBinding?
+): CloudNetworkBinding? {
+    return if (shouldRequireCellularRoute(source)) binding else null
+}
+
 class CloudRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "CloudRepository"
-        private const val TIMEOUT_SECONDS = 60L
-        private const val USE_MOCK = true
+        private const val USE_MOCK = false
     }
 
     private val _state = MutableStateFlow<CloudState>(CloudState.Idle)
     val state: StateFlow<CloudState> = _state.asStateFlow()
 
-    private val apiService: CloudApiService
+    private val backendConfig = BackendConfig(context)
     private val imageUploadManager = ImageUploadManager(context)
+    private val cellularNetworkProvider = CellularNetworkProvider(context)
 
-    init {
-        apiService = createApiService()
+    val cellularNetworkState: StateFlow<CellularNetworkState>
+        get() = cellularNetworkProvider.state
+
+    val baseUrl: String
+        get() = backendConfig.getBaseUrl()
+
+    fun updateBaseUrl(baseUrl: String): String {
+        resetState()
+        return backendConfig.setBaseUrl(baseUrl)
     }
 
-    private fun createApiService(): CloudApiService {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .addInterceptor(loggingInterceptor)
-            .addInterceptor { chain ->
-                val original = chain.request()
-                val request = original.newBuilder()
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .method(original.method, original.body)
-                    .build()
-                chain.proceed(request)
-            }
-            .build()
+    private fun createApiService(
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudApiService {
+        val route = createCloudOkHttpClient(
+            selectCloudNetworkBinding(source, cellularNetworkProvider.currentBinding())
+        )
 
         val retrofit = Retrofit.Builder()
-            .baseUrl(CloudEndpoints.BASE_URL)
-            .client(okHttpClient)
+            .baseUrl(backendConfig.getBaseUrl())
+            .client(route.client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
         return retrofit.create(CloudApiService::class.java)
+    }
+
+    fun startCellularRoute() {
+        cellularNetworkProvider.start()
+    }
+
+    fun stopCellularRoute() {
+        cellularNetworkProvider.stop()
+    }
+
+    private suspend fun waitForCellularRoute(): Boolean {
+        if (cellularNetworkProvider.currentBinding() != null) return true
+
+        _state.value = CloudState.Processing("Waiting for cellular cloud route...")
+        cellularNetworkProvider.start()
+        withTimeoutOrNull(5_000) {
+            cellularNetworkProvider.state.first { it is CellularNetworkState.Available }
+        }
+        return cellularNetworkProvider.currentBinding() != null
     }
 
     suspend fun checkHealth(): CloudResult<HealthCheckResponse> {
@@ -94,12 +117,18 @@ class CloudRepository(private val context: Context) {
                     )
                 )
             } else {
-                val response = apiService.healthCheck()
-                if (response.isSuccessful && response.body()?.code == 0) {
+                val response = createApiService().healthCheck()
+                if (response.isSuccessful && response.body()?.ok == true) {
                     _state.value = CloudState.Connected
-                    CloudResult.Success(response.body()!!.data!!)
+                    CloudResult.Success(
+                        HealthCheckResponse(
+                            status = "healthy",
+                            timestamp = System.currentTimeMillis().toString(),
+                            services = mapOf("cloud-backend" to "ok")
+                        )
+                    )
                 } else {
-                    throw Exception(response.body()?.message ?: "Health check failed")
+                    throw Exception("Health check failed")
                 }
             }
         } catch (e: Exception) {
@@ -131,7 +160,7 @@ class CloudRepository(private val context: Context) {
                 val descPart = imageUploadManager.createDescriptionBody(description)
 
                 _state.value = CloudState.Uploading(50)
-                val response = apiService.uploadImage(imagePart, descPart)
+                val response = createApiService().uploadImage(imagePart, descPart)
 
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Processing("Upload complete")
@@ -147,6 +176,81 @@ class CloudRepository(private val context: Context) {
         }
     }
 
+    suspend fun analyzeFrame(
+        bitmap: Bitmap,
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudResult<AnalyzeResponse> {
+        return try {
+            _state.value = CloudState.Uploading(0)
+            if (shouldRequireCellularRoute(source) && !waitForCellularRoute()) {
+                throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
+            }
+
+            val file = imageUploadManager.prepareForUpload(bitmap)
+            val framePart = createAnalyzeFramePart(file)
+
+            _state.value = CloudState.Processing("云端 DAP 正在分析...")
+            val response = createApiService(source).analyzeFrame(framePart)
+
+            if (response.isSuccessful && response.body() != null) {
+                val analyzeResponse = response.body()!!
+                _state.value = CloudState.Success(analyzeResponse)
+                CloudResult.Success(analyzeResponse)
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Analyze failed")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Analyze failed", e)
+            _state.value = CloudState.Error("Analyze failed: ${e.message}")
+            CloudResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun analyzeFrame(bitmap: Bitmap, isCameraFrame: Boolean): CloudResult<AnalyzeResponse> {
+        return analyzeFrame(
+            bitmap = bitmap,
+            source = if (isCameraFrame) {
+                AnalyzeFrameSource.CameraCapture
+            } else {
+                AnalyzeFrameSource.DevelopmentSample
+            }
+        )
+    }
+
+    suspend fun semanticAnalyzeFrame(
+        bitmap: Bitmap,
+        mode: SemanticAnalyzeMode,
+        query: String? = null,
+        source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample
+    ): CloudResult<SemanticAnalyzeResponse> {
+        return try {
+            _state.value = CloudState.Uploading(0)
+            if (shouldRequireCellularRoute(source) && !waitForCellularRoute()) {
+                throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
+            }
+
+            val file = imageUploadManager.prepareForUpload(bitmap)
+            val framePart = createAnalyzeFramePart(file)
+            val modePart = createSemanticTextPart(mode.value)
+            val queryPart = query?.takeIf { it.isNotBlank() }?.let(::createSemanticTextPart)
+
+            _state.value = CloudState.Processing("云端视觉语义正在分析...")
+            val response = createApiService(source).semanticAnalyze(framePart, modePart, queryPart)
+
+            if (response.isSuccessful && response.body() != null) {
+                val semanticResponse = response.body()!!
+                _state.value = CloudState.Success(semanticResponse)
+                CloudResult.Success(semanticResponse)
+            } else {
+                throw Exception(response.errorBody()?.string() ?: "Semantic analyze failed")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Semantic analyze failed", e)
+            _state.value = CloudState.Error("Semantic analyze failed: ${e.message}")
+            CloudResult.Error(e.message ?: "Unknown error")
+        }
+    }
+
     suspend fun processImage(imageId: String): CloudResult<ImageProcessResult> {
         return try {
             _state.value = CloudState.Processing("Processing image...")
@@ -156,7 +260,7 @@ class CloudRepository(private val context: Context) {
                 _state.value = CloudState.Success(MockData.imageProcessResult)
                 CloudResult.Success(MockData.imageProcessResult)
             } else {
-                val response = apiService.processImage(imageId)
+                val response = createApiService().processImage(imageId)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)
@@ -181,7 +285,7 @@ class CloudRepository(private val context: Context) {
                 CloudResult.Success(MockData.voiceProcessResponse)
             } else {
                 val request = VoiceProcessRequest(text = text)
-                val response = apiService.processVoice(request)
+                val response = createApiService().processVoice(request)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)
@@ -206,7 +310,7 @@ class CloudRepository(private val context: Context) {
                 CloudResult.Success(MockData.ttsResponse)
             } else {
                 val request = TtsRequest(text = text)
-                val response = apiService.synthesizeSpeech(request)
+                val response = createApiService().synthesizeSpeech(request)
                 if (response.isSuccessful && response.body()?.code == 0) {
                     _state.value = CloudState.Success(response.body()!!.data!!)
                     CloudResult.Success(response.body()!!.data!!)

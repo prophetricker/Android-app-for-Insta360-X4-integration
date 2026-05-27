@@ -16,9 +16,6 @@ import com.omniveye.app.viewmodel.MainViewModel
 
 class MainActivity : ComponentActivity() {
 
-    private var volumeDownStartTime: Long = 0
-    private val longPressThreshold = 300L
-
     private val viewModel: MainViewModel by lazy {
         ViewModelProvider(this)[MainViewModel::class.java]
     }
@@ -41,10 +38,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (volumeDownStartTime == 0L) {
-                volumeDownStartTime = System.currentTimeMillis()
-                viewModel.startListening()
+            if (event?.repeatCount ?: 0 > 0) {
+                return true
             }
+            viewModel.handleDemoCommandVolumePress()
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -52,13 +49,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (volumeDownStartTime != 0L) {
-                val pressDuration = System.currentTimeMillis() - volumeDownStartTime
-                if (pressDuration >= longPressThreshold) {
-                    viewModel.stopListening()
-                }
-                volumeDownStartTime = 0L
-            }
             return true
         }
         return super.onKeyUp(keyCode, event)

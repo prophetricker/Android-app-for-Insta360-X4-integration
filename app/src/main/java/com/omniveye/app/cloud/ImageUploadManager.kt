@@ -10,9 +10,25 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+
+fun createAnalyzeFramePart(file: File): MultipartBody.Part {
+    val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+    return MultipartBody.Part.createFormData("frame", file.name, requestFile)
+}
+
+fun createSemanticTextPart(value: String): okhttp3.RequestBody {
+    return value.toRequestBody("text/plain".toMediaTypeOrNull())
+}
+
+fun readRequestBody(body: okhttp3.RequestBody): String {
+    val buffer = Buffer()
+    body.writeTo(buffer)
+    return buffer.readUtf8()
+}
 
 class ImageUploadManager(private val context: Context) {
 

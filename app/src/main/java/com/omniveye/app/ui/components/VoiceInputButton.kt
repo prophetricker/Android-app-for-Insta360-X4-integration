@@ -130,9 +130,9 @@ fun VoiceInputButton(
         Text(
             text = when {
                 hasError -> "录音失败"
-                isListening -> "点击停止"
-                isProcessing -> "识别中..."
-                enabled -> "按住说话"
+                isListening -> "正在识别指令"
+                isProcessing -> "分析指令中"
+                enabled -> "音量下键触发"
                 else -> "不可用"
             },
             style = MaterialTheme.typography.bodyMedium,

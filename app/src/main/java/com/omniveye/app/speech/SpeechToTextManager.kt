@@ -208,55 +208,12 @@ class SpeechToTextManager(private val context: Context) {
 
             override fun onError(error: Int) {
                 isListening = false
-                val (errorMessage, userAction) = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> Pair(
-                        "音频录制错误 - 请检查麦克风是否被其他应用占用",
-                        ACTION_MIC_PERMISSION
-                    )
-                    SpeechRecognizer.ERROR_CLIENT -> Pair(
-                        "客户端错误 - 请重启应用",
-                        ACTION_REBOOT
-                    )
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> Pair(
-                        "权限不足 - 请检查麦克风权限",
-                        ACTION_MIC_PERMISSION
-                    )
-                    SpeechRecognizer.ERROR_NETWORK -> Pair(
-                        "网络错误 - 请检查网络连接",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> Pair(
-                        "网络超时 - 请重试",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_NO_MATCH -> Pair(
-                        "未识别到语音 - 请对准麦克风说话",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> Pair(
-                        "语音服务忙碌 - 请稍后重试",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_SERVER -> Pair(
-                        "服务器错误 - 请稍后重试",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> Pair(
-                        "未检测到语音输入",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> Pair(
-                        "不支持的语言",
-                        null
-                    )
-                    SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> Pair(
-                        "语言不可用 - 正在下载语音包",
-                        null
-                    )
-                    else -> Pair(
-                        "未知错误 ($error)",
-                        ACTION_REBOOT
-                    )
+                val errorMessage = formatSpeechError(error)
+                val userAction = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO,
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> ACTION_MIC_PERMISSION
+                    SpeechRecognizer.ERROR_CLIENT -> ACTION_REBOOT
+                    else -> null
                 }
                 Log.e(TAG, "Recognition error: $errorMessage (code: $error)")
                 _recognitionState.value = SpeechRecognitionState.Error(errorMessage, userAction)

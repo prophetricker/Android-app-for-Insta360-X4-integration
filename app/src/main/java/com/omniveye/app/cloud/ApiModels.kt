@@ -39,6 +39,46 @@ data class ImageProcessResult(
     val processedAt: String?
 )
 
+data class AnalyzeResponse(
+    @SerializedName("distance_m")
+    val distanceM: Double,
+    @SerializedName("level")
+    val level: Int,
+    @SerializedName("confidence")
+    val confidence: Double,
+    @SerializedName("scene_text")
+    val sceneText: String,
+    @SerializedName("latency_ms")
+    val latencyMs: Int
+)
+
+enum class SemanticAnalyzeMode(val value: String) {
+    PRODUCT("product"),
+    TRAFFIC_LIGHT("traffic_light"),
+    SURROUNDINGS("surroundings")
+}
+
+data class SemanticAnalyzeResponse(
+    @SerializedName("mode")
+    val mode: String,
+    @SerializedName("summary")
+    val summary: String,
+    @SerializedName("objects")
+    val objects: List<String>,
+    @SerializedName("traffic_light")
+    val trafficLight: String?,
+    @SerializedName("target_found")
+    val targetFound: Boolean,
+    @SerializedName("product_name")
+    val productName: String?,
+    @SerializedName("confidence")
+    val confidence: Double,
+    @SerializedName("latency_ms")
+    val latencyMs: Int,
+    @SerializedName("fallback_reason")
+    val fallbackReason: String?
+)
+
 data class VoiceProcessRequest(
     @SerializedName("text")
     val text: String,
@@ -92,4 +132,9 @@ data class HealthCheckResponse(
     val timestamp: String,
     @SerializedName("services")
     val services: Map<String, String>?
+)
+
+data class BackendHealthResponse(
+    @SerializedName("ok")
+    val ok: Boolean
 )

@@ -44,6 +44,38 @@ sealed class CameraOperationResult {
     data class Error(val message: String) : CameraOperationResult()
 }
 
+fun x4OscInfoUrl(): String = "http://192.168.42.1:80/osc/info"
+
+fun x4OscCommandStatusUrl(): String = "http://192.168.42.1:80/osc/commands/status"
+
+fun x4OscCommandStatusBody(commandId: String): String =
+    """{"id":"${commandId.toJsonStringContent()}"}"""
+
+private fun String.toJsonStringContent(): String =
+    buildString {
+        for (char in this@toJsonStringContent) {
+            when (char) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\b' -> append("\\b")
+                '\u000C' -> append("\\f")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> {
+                    if (char.code < 0x20) {
+                        append("\\u")
+                        append(char.code.toString(16).padStart(4, '0'))
+                    } else {
+                        append(char)
+                    }
+                }
+            }
+        }
+    }
+
+fun shouldAttemptX4OscConnection(isWifiEnabled: Boolean): Boolean = isWifiEnabled
+
 class CameraManager(private val context: Context) {
 
     companion object {

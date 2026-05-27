@@ -35,30 +35,30 @@ class GitHubStorageManager(
         try {
             val fileName = customFileName ?: generateFileName()
             val filePath = "$FOLDER_PATH/$fileName"
-            
+
             Log.d(TAG, "Uploading image: $filePath")
-            
+
             // 压缩并转换为Base64
             val base64Content = bitmapToBase64(bitmap)
-            
+
             // 检查是否文件已存在（获取SHA）
             val existingFile = apiService.getFile(filePath)
             val sha = existingFile?.content?.sha
-            
+
             // 上传文件
             val message = if (sha != null) {
                 "Update image: $fileName"
             } else {
                 "Upload image: $fileName"
             }
-            
+
             val response = apiService.createOrUpdateFile(
                 path = filePath,
                 content = base64Content,
                 message = message,
                 sha = sha
             )
-            
+
             if (response != null && response.content != null) {
                 Log.d(TAG, "Upload successful: ${response.content.downloadUrl}")
                 GitHubUploadResult(
@@ -121,7 +121,7 @@ class GitHubStorageManager(
             val filePath = "$FOLDER_PATH/$fileName"
             val existingFile = apiService.getFile(filePath)
             val sha = existingFile?.content?.sha
-            
+
             if (sha != null) {
                 apiService.deleteFile(filePath, sha, "Delete image: $fileName")
             } else {
@@ -146,7 +146,7 @@ class GitHubStorageManager(
      */
     private fun bitmapToBase64(bitmap: Bitmap): String {
         val outputStream = ByteArrayOutputStream()
-        
+
         // 如果图片太大，先压缩
         val maxDimension = 2048
         val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
@@ -163,14 +163,14 @@ class GitHubStorageManager(
         } else {
             bitmap
         }
-        
+
         scaledBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, outputStream)
-        
+
         // 如果原图被缩放过，需要回收
         if (scaledBitmap != bitmap) {
             scaledBitmap.recycle()
         }
-        
+
         val byteArray = outputStream.toByteArray()
         return Base64.encodeToString(byteArray, Base64.NO_WRAP)
     }
