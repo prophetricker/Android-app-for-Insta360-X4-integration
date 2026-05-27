@@ -7,6 +7,46 @@ import org.junit.Test
 class FrameAcquisitionPolicyTest {
 
     @Test
+    fun obstacleUsesLatestCameraFrameWhenConnectedAndAvailable() {
+        val plan = selectObstacleFramePlan(
+            cameraState = CameraConnectionState.Connected,
+            hasLatestCameraFrame = true
+        )
+
+        assertEquals(FrameAcquisitionPlan.UseLatestCameraFrame, plan)
+    }
+
+    @Test
+    fun obstacleCapturesCameraFrameWhenConnectedWithoutLatestFrame() {
+        val plan = selectObstacleFramePlan(
+            cameraState = CameraConnectionState.Connected,
+            hasLatestCameraFrame = false
+        )
+
+        assertEquals(FrameAcquisitionPlan.CaptureCameraFrame, plan)
+    }
+
+    @Test
+    fun obstacleUsesLatestCameraFrameWhenCameraDisconnectsAfterCapture() {
+        val plan = selectObstacleFramePlan(
+            cameraState = CameraConnectionState.Disconnected,
+            hasLatestCameraFrame = true
+        )
+
+        assertEquals(FrameAcquisitionPlan.UseLatestCameraFrame, plan)
+    }
+
+    @Test
+    fun obstacleUsesDevelopmentSampleWhenCameraIsNotConnectedAndNoCachedFrame() {
+        val plan = selectObstacleFramePlan(
+            cameraState = CameraConnectionState.Disconnected,
+            hasLatestCameraFrame = false
+        )
+
+        assertEquals(FrameAcquisitionPlan.UseDevelopmentSample, plan)
+    }
+
+    @Test
     fun surroundingsUsesLatestCameraFrameWhenConnectedAndAvailable() {
         val plan = selectSurroundingsFramePlan(
             cameraState = CameraConnectionState.Connected,

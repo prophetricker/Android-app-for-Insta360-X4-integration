@@ -101,6 +101,11 @@ fun selectSurroundingsFramePlan(
     }
 }
 
+fun selectObstacleFramePlan(
+    cameraState: CameraConnectionState,
+    hasLatestCameraFrame: Boolean
+): FrameAcquisitionPlan = selectSurroundingsFramePlan(cameraState, hasLatestCameraFrame)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
@@ -268,8 +273,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            when (cameraManager.connectionState.value) {
-                is CameraConnectionState.Connected -> {
+            val latestCameraBitmap = cameraManager.lastPhotoBitmap.value
+            when (
+                selectObstacleFramePlan(
+                    cameraState = cameraManager.connectionState.value,
+                    hasLatestCameraFrame = latestCameraBitmap != null
+                )
+            ) {
+                FrameAcquisitionPlan.UseLatestCameraFrame -> {
+                    Log.d(TAG, "ObstacleClickTiming usingLatestCameraFrameMs=${System.currentTimeMillis() - clickStart}")
+                    uploadImage(
+                        bitmap = latestCameraBitmap ?: return@launch,
+                        source = AnalyzeFrameSource.CameraCapture,
+                        sourceLabel = "X4 瀹炴媿",
+                        captureMs = null
+                    )
+                }
+                FrameAcquisitionPlan.CaptureCameraFrame -> {
                     Log.d(TAG, "ObstacleClickTiming enteringTakePhotoMs=${System.currentTimeMillis() - clickStart}")
                     var capture: com.omniveye.app.camera.CameraOperationResult
                     val captureMs = measureTimeMillis {
@@ -299,7 +319,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                else -> {
+                FrameAcquisitionPlan.UseDevelopmentSample -> {
                     Log.d(TAG, "ObstacleClickTiming usingDevelopmentSampleMs=${System.currentTimeMillis() - clickStart}")
                     val bitmap = DevelopmentSampleFrame.createBitmap()
                     uploadImage(
