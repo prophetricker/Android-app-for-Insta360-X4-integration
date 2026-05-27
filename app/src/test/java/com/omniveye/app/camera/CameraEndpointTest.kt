@@ -53,4 +53,26 @@ class CameraEndpointTest {
         assertTrue(isX4WifiLinkAddress("192.168.42.6"))
         assertFalse(isX4WifiLinkAddress("10.123.14.142"))
     }
+
+    @Test
+    fun x4WifiRouteRequiresWifiTransportAndCameraSubnetAddress() {
+        assertTrue(
+            isX4WifiRoute(
+                hasWifiTransport = true,
+                hostAddresses = listOf("192.168.42.6")
+            )
+        )
+        assertFalse(
+            isX4WifiRoute(
+                hasWifiTransport = true,
+                hostAddresses = listOf("10.15.18.196")
+            )
+        )
+        assertFalse(
+            isX4WifiRoute(
+                hasWifiTransport = false,
+                hostAddresses = listOf("192.168.42.6")
+            )
+        )
+    }
 }

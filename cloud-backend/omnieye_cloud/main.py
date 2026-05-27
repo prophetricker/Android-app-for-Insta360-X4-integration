@@ -7,9 +7,11 @@ from time import perf_counter
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .service import AnalysisService
 from .semantic import SemanticAnalyzer, SemanticMode
+from .obstacle_vision import VisionObstacleAnalyzer
 from .runtime_config import RuntimeConfig, load_env_file
 
 
@@ -80,6 +82,11 @@ async def analyze(frame: UploadFile = File(...)) -> AnalyzeResponse:
 
     suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
     result = service.save_latest_frame(content, suffix=suffix)
+    if result.confidence == 0.0:
+        frame_path = service.latest_frame_path()
+        if frame_path is not None:
+            vision_result = await run_in_threadpool(VisionObstacleAnalyzer().analyze, frame_path)
+            result = vision_result.result
     latency_ms = int((perf_counter() - start) * 1000)
     return AnalyzeResponse(
         distance_m=result.distance_m,
@@ -103,7 +110,7 @@ async def semantic_analyze(
     suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
     frame_path = service.upload_dir / f"semantic_latest{suffix}"
     frame_path.write_bytes(content)
-    result = SemanticAnalyzer().analyze(frame_path, mode=mode, query=query)
+    result = await run_in_threadpool(SemanticAnalyzer().analyze, frame_path, mode=mode, query=query)
     return SemanticAnalyzeResponse(
         mode=result.mode,
         summary=result.summary,

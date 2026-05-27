@@ -196,7 +196,7 @@ fun CloudStatusBadge(
     modifier: Modifier = Modifier
 ) {
     val (icon, text, color, bgColor) = when (cloudState) {
-        is CloudState.Connected -> Quadruple(Icons.Default.CloudQueue, "云端已连接", Success, Success.copy(alpha = 0.1f))
+        is CloudState.Connected -> Quadruple(Icons.Default.CloudQueue, "后端在线", Success, Success.copy(alpha = 0.1f))
         is CloudState.Connecting -> Quadruple(Icons.Default.CloudQueue, "连接中...", Warning, Warning.copy(alpha = 0.1f))
         is CloudState.Processing -> Quadruple(Icons.Default.CloudQueue, "处理中...", Info, Info.copy(alpha = 0.1f))
         is CloudState.Uploading -> Quadruple(Icons.Default.CloudQueue, "上传中...", Info, Info.copy(alpha = 0.1f))

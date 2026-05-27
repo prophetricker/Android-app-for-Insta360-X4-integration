@@ -94,6 +94,10 @@ fun shouldBindCameraUrlToWifi(url: URL): Boolean {
     return url.host == "192.168.42.1"
 }
 
+fun isX4WifiRoute(hasWifiTransport: Boolean, hostAddresses: Iterable<String>): Boolean {
+    return hasWifiTransport && hostAddresses.any(::isX4WifiLinkAddress)
+}
+
 class CameraManager(private val context: Context) {
 
     companion object {
@@ -321,6 +325,13 @@ class CameraManager(private val context: Context) {
     suspend fun takePhoto(): CameraOperationResult {
         if (_connectionState.value != CameraConnectionState.Connected) {
             return CameraOperationResult.Error("Camera not connected")
+        }
+
+        if (!hasX4WifiRoute()) {
+            val message = "X4 WiFi route is not active. Reconnect the phone to the X4 WiFi and keep that WiFi connected."
+            Log.w(TAG, message)
+            _connectionState.value = CameraConnectionState.Error(message)
+            return CameraOperationResult.Error(message)
         }
 
         if (_isTakingPhoto.value) {
@@ -709,16 +720,26 @@ class CameraManager(private val context: Context) {
         return network.openConnection(url)
     }
 
+    fun hasX4WifiRoute(): Boolean {
+        return findX4WifiNetwork() != null
+    }
+
     private fun findX4WifiNetwork(): Network? {
         return connectivityManager.allNetworks.firstOrNull { network ->
             val capabilities = connectivityManager.getNetworkCapabilities(network)
             val linkProperties = connectivityManager.getLinkProperties(network)
             val hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            val hasX4Address = linkProperties?.linkAddresses.orEmpty().any {
-                isX4WifiLinkAddress(it.address.hostAddress ?: "")
+            val hostAddresses = linkProperties?.linkAddresses.orEmpty().mapNotNull {
+                it.address.hostAddress
             }
+            val matches = isX4WifiRoute(hasWifiTransport, hostAddresses)
 
-            hasWifiTransport && hasX4Address
+            Log.d(
+                TAG,
+                "Camera route candidate network=$network wifi=$hasWifiTransport addresses=$hostAddresses matchesX4=$matches"
+            )
+
+            matches
         }
     }
 

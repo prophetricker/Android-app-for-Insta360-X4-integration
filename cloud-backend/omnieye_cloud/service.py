@@ -49,6 +49,10 @@ class AnalysisService:
         with self._lock:
             return self._latest_result
 
+    def latest_frame_path(self) -> Path | None:
+        with self._lock:
+            return self._latest_frame
+
     def _run(self) -> None:
         while not self._stop.is_set():
             with self._lock:

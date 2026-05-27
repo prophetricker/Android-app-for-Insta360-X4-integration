@@ -23,7 +23,6 @@ import com.omniveye.app.demo.DevelopmentSampleFrame
 import com.omniveye.app.demo.RoadshowDemo
 import com.omniveye.app.demo.roadshowProductResult
 import com.omniveye.app.demo.roadshowAnalyzeSourceLabel
-import com.omniveye.app.demo.roadshowDisplayedCameraState
 import com.omniveye.app.demo.roadshowSemanticSourceLabel
 import com.omniveye.app.demo.roadshowTrafficLightResult
 import com.omniveye.app.demo.roadshowTreeObstacleResult
@@ -50,7 +49,7 @@ import kotlin.system.measureTimeMillis
 
 data class MainUiState(
     val cameraState: CameraConnectionState = CameraConnectionState.Disconnected,
-    val displayCameraState: CameraConnectionState = roadshowDisplayedCameraState(cameraState),
+    val displayCameraState: CameraConnectionState = cameraState,
     val cloudState: CloudState = CloudState.Idle,
     val speechRecognitionState: SpeechRecognitionState = SpeechRecognitionState.Idle,
     val ttsState: TtsState = TtsState.Idle,
@@ -152,7 +151,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         cameraState = state,
-                        displayCameraState = roadshowDisplayedCameraState(state)
+                        displayCameraState = state
                     )
                 }
                 when (state) {
