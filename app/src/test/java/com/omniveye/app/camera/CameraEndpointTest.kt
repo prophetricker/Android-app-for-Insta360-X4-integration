@@ -1,8 +1,10 @@
 package com.omniveye.app.camera
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.URL
 
 class CameraEndpointTest {
 
@@ -34,5 +36,21 @@ class CameraEndpointTest {
     @Test
     fun treatsEnabledWifiAsEnoughToTryCameraConnectionOnHarmonyOs() {
         assertTrue(shouldTreatWifiAsEnabledForCamera(isWifiEnabled = true, networkId = -1))
+    }
+
+    @Test
+    fun x4CameraIpRequiresWifiBoundRoute() {
+        assertTrue(shouldBindCameraUrlToWifi(URL("http://192.168.42.1:80/osc/state")))
+    }
+
+    @Test
+    fun cloudUrlDoesNotUseCameraWifiRoute() {
+        assertFalse(shouldBindCameraUrlToWifi(URL("https://swaddling-onslaught-crane.ngrok-free.dev/health")))
+    }
+
+    @Test
+    fun x4WifiRouteMatchesCameraSubnetButNotCellularAddress() {
+        assertTrue(isX4WifiLinkAddress("192.168.42.6"))
+        assertFalse(isX4WifiLinkAddress("10.123.14.142"))
     }
 }

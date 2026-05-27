@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaScannerConnection
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Environment
 import android.util.Log
@@ -28,6 +31,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -82,6 +86,14 @@ fun shouldTreatWifiAsEnabledForCamera(isWifiEnabled: Boolean, networkId: Int): B
     return isWifiEnabled
 }
 
+fun isX4WifiLinkAddress(hostAddress: String): Boolean {
+    return hostAddress.startsWith("192.168.42.")
+}
+
+fun shouldBindCameraUrlToWifi(url: URL): Boolean {
+    return url.host == "192.168.42.1"
+}
+
 class CameraManager(private val context: Context) {
 
     companion object {
@@ -130,6 +142,8 @@ class CameraManager(private val context: Context) {
     private var isWiFiConnected = false
     private var continuousCaptureJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val connectivityManager =
+        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private var cameraSessionId: String? = null
 
@@ -243,7 +257,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Testing connection to: $OSC_INFO_URL")
 
             val url = URL(OSC_INFO_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -279,7 +293,7 @@ class CameraManager(private val context: Context) {
     private suspend fun fetchCameraState() {
         try {
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -390,7 +404,7 @@ class CameraManager(private val context: Context) {
     private suspend fun checkCameraState(): JSONObject {
         return try {
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -543,7 +557,7 @@ class CameraManager(private val context: Context) {
 
     private fun sendOscPost(endpoint: String, body: String): String {
         val url = URL(endpoint)
-        val connection = url.openConnection() as HttpURLConnection
+        val connection = openCameraConnection(url) as HttpURLConnection
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.doInput = true
@@ -588,7 +602,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Downloading photo from: $fullUrl")
 
             val url = URL(fullUrl)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "image/*")
             connection.connectTimeout = READ_TIMEOUT
@@ -620,7 +634,7 @@ class CameraManager(private val context: Context) {
             Log.d(TAG, "Fetching photo list...")
 
             val url = URL(OSC_STATE_URL)
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = openCameraConnection(url) as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
@@ -682,6 +696,30 @@ class CameraManager(private val context: Context) {
 
     private fun readResponse(inputStream: InputStream): String {
         return inputStream.bufferedReader().use { it.readText() }
+    }
+
+    private fun openCameraConnection(url: URL): URLConnection {
+        if (!shouldBindCameraUrlToWifi(url)) {
+            return url.openConnection()
+        }
+
+        val network = findX4WifiNetwork()
+            ?: throw IllegalStateException("X4 WiFi network route not available for ${url.host}")
+        Log.d(TAG, "Opening camera URL via X4 WiFi network: $url")
+        return network.openConnection(url)
+    }
+
+    private fun findX4WifiNetwork(): Network? {
+        return connectivityManager.allNetworks.firstOrNull { network ->
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            val linkProperties = connectivityManager.getLinkProperties(network)
+            val hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val hasX4Address = linkProperties?.linkAddresses.orEmpty().any {
+                isX4WifiLinkAddress(it.address.hostAddress ?: "")
+            }
+
+            hasWifiTransport && hasX4Address
+        }
     }
 
     fun saveBitmapToFile(bitmap: Bitmap, fileName: String): File? {

@@ -51,15 +51,24 @@ class SemanticAnalyzer:
         try:
             payload = self._call_openai(image_path=image_path, mode=mode, query=query)
             return _result_from_payload(payload, mode=mode, query=query, latency_ms=_elapsed_ms(start))
-        except Exception as exc:
+        except Exception as responses_exc:
+            responses_error = responses_exc
+
+        try:
+            payload = self._call_openai_chat_completions(image_path=image_path, mode=mode, query=query)
+            return _result_from_payload(payload, mode=mode, query=query, latency_ms=_elapsed_ms(start))
+        except Exception as chat_exc:
             return _fallback_result(
                 mode,
                 query,
                 _elapsed_ms(start),
-                fallback_reason=f"openai_error: {type(exc).__name__}",
+                fallback_reason=(
+                    f"openai_error: {type(responses_error).__name__}; "
+                    f"chat_error: {type(chat_exc).__name__}"
+                ),
             )
 
-    def _call_openai(self, image_path: Path, mode: SemanticMode, query: str | None) -> dict[str, Any]:
+    def _create_openai_client(self) -> Any:
         from openai import OpenAI
 
         client_kwargs: dict[str, Any] = {"api_key": self.api_key}
@@ -67,8 +76,10 @@ class SemanticAnalyzer:
             client_kwargs["base_url"] = self.base_url
         if self.default_headers:
             client_kwargs["default_headers"] = self.default_headers
-        client = OpenAI(**client_kwargs)
-        image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        return OpenAI(**client_kwargs)
+
+    def _call_openai(self, image_path: Path, mode: SemanticMode, query: str | None) -> dict[str, Any]:
+        client = self._create_openai_client()
         prompt = _prompt_for_mode(mode, query)
         response = client.responses.create(
             model=self.model,
@@ -79,7 +90,7 @@ class SemanticAnalyzer:
                         {"type": "input_text", "text": prompt},
                         {
                             "type": "input_image",
-                            "image_url": f"data:image/jpeg;base64,{image_data}",
+                            "image_url": _image_data_url(image_path),
                             "detail": "high",
                         },
                     ],
@@ -97,7 +108,42 @@ class SemanticAnalyzer:
         text = getattr(response, "output_text", "")
         if not text:
             raise ValueError("OpenAI response did not contain output_text")
-        return json.loads(text)
+        return _json_payload_from_text(text)
+
+    def _call_openai_chat_completions(
+        self,
+        image_path: Path,
+        mode: SemanticMode,
+        query: str | None,
+    ) -> dict[str, Any]:
+        client = self._create_openai_client()
+        prompt = _prompt_for_mode(mode, query)
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": _image_data_url(image_path),
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        choices = getattr(response, "choices", [])
+        if not choices:
+            raise ValueError("OpenAI chat response did not contain choices")
+        message = getattr(choices[0], "message", None)
+        text = _chat_message_content_to_text(getattr(message, "content", None))
+        if not text:
+            raise ValueError("OpenAI chat response did not contain message content")
+        return _json_payload_from_text(text)
 
 
 def _prompt_for_mode(mode: SemanticMode, query: str | None) -> str:
@@ -179,38 +225,77 @@ def _fallback_result(
         product = query or "目标商品"
         return SemanticResult(
             mode=mode.value,
-            summary=f"演示模式：画面中疑似有{product}货架，请靠近后再次扫描确认。",
-            objects=["shelf", "product package", "price tag"],
+            summary=f"已收到图像，但视觉模型暂不可用，无法真实识别{product}。请检查云端模型配置后重试。",
+            objects=["vision_model_unavailable"],
             traffic_light=None,
-            target_found=True,
+            target_found=False,
             product_name=product,
-            confidence=0.55,
+            confidence=0.0,
             latency_ms=latency_ms,
             fallback_reason=fallback_reason,
         )
     if mode is SemanticMode.SURROUNDINGS:
         return SemanticResult(
             mode=mode.value,
-            summary="演示模式：周围环境较为开阔，前方通道暂时通畅，请继续缓慢前进并注意两侧障碍。",
-            objects=["open path", "surroundings", "possible obstacle"],
+            summary="已收到全景图，但视觉模型暂不可用，无法完成周围环境语义识别。请检查云端模型配置后重试。",
+            objects=["vision_model_unavailable"],
             traffic_light=None,
-            target_found=True,
+            target_found=False,
             product_name=None,
-            confidence=0.55,
+            confidence=0.0,
             latency_ms=latency_ms,
             fallback_reason=fallback_reason,
         )
     return SemanticResult(
         mode=mode.value,
-        summary="演示模式：前方疑似为绿灯，请确认周围车辆和人行横道后再通行。",
-        objects=["traffic light", "crosswalk", "road"],
-        traffic_light="green",
-        target_found=True,
+        summary="已收到图像，但视觉模型暂不可用，无法判断红绿灯和路口状态。请检查云端模型配置后重试。",
+        objects=["vision_model_unavailable"],
+        traffic_light="unknown",
+        target_found=False,
         product_name=None,
-        confidence=0.55,
+        confidence=0.0,
         latency_ms=latency_ms,
         fallback_reason=fallback_reason,
     )
+
+
+def _image_data_url(image_path: Path) -> str:
+    image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{image_data}"
+
+
+def _json_payload_from_text(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        payload = json.loads(stripped[start : end + 1])
+
+    if not isinstance(payload, dict):
+        raise ValueError("OpenAI response JSON must be an object")
+    return payload
+
+
+def _chat_message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                value = item.get("text")
+                if isinstance(value, str):
+                    parts.append(value)
+            else:
+                value = getattr(item, "text", None)
+                if isinstance(value, str):
+                    parts.append(value)
+        return "\n".join(parts)
+    return ""
 
 
 def _normalize_traffic_light(value: Any) -> str | None:

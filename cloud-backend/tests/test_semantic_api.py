@@ -18,19 +18,22 @@ def make_jpeg() -> bytes:
     return buffer.getvalue()
 
 
-def test_semantic_analyze_product_returns_demo_safe_fallback(monkeypatch):
+def test_semantic_analyze_product_reports_model_unavailable_without_fake_detection(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     analyzer = SemanticAnalyzer(api_key=None)
 
     result = analyzer.analyze(make_temp_image_path(), SemanticMode.PRODUCT, query="milk")
 
     assert result.mode == "product"
-    assert result.target_found is True
+    assert result.target_found is False
     assert result.product_name
     assert "milk" in result.summary
+    assert "视觉模型" in result.summary
+    assert "演示模式" not in result.summary
     assert result.traffic_light is None
     assert isinstance(result.objects, list)
     assert isinstance(result.latency_ms, int)
+    assert result.confidence == 0.0
     assert result.fallback_reason == "openai_api_key_missing"
 
 
@@ -109,6 +112,33 @@ def test_semantic_analyze_surroundings_uses_model_payload(monkeypatch):
     assert result.fallback_reason is None
 
 
+def test_semantic_analyze_uses_chat_completions_after_responses_permission_error(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    def raise_permission_error(self, image_path, mode, query):
+        raise PermissionError("responses API not allowed")
+
+    def return_chat_payload(self, image_path, mode, query):
+        return {
+            "summary": "你在室内桌边，前方有窗户，身边有椅子和桌面物品，请先确认桌沿位置再移动。",
+            "objects": ["table edge", "chairs", "window"],
+            "traffic_light": None,
+            "target_found": True,
+            "product_name": None,
+            "confidence": 0.82,
+        }
+
+    monkeypatch.setattr(SemanticAnalyzer, "_call_openai", raise_permission_error)
+    monkeypatch.setattr(SemanticAnalyzer, "_call_openai_chat_completions", return_chat_payload)
+
+    result = SemanticAnalyzer().analyze(make_temp_image_path(), SemanticMode.SURROUNDINGS)
+
+    assert "桌边" in result.summary
+    assert result.objects == ["table edge", "chairs", "window"]
+    assert result.confidence == 0.82
+    assert result.fallback_reason is None
+
+
 def test_semantic_analyze_rejects_unknown_mode():
     response = client.post(
         "/semantic-analyze",
@@ -125,7 +155,11 @@ def test_semantic_analyze_reports_openai_error_reason(monkeypatch):
     def raise_auth_error(self, image_path, mode, query):
         raise RuntimeError("Error code: 401 - invalid_api_key")
 
+    def raise_chat_auth_error(self, image_path, mode, query):
+        raise PermissionError("chat completions also rejected")
+
     monkeypatch.setattr(SemanticAnalyzer, "_call_openai", raise_auth_error)
+    monkeypatch.setattr(SemanticAnalyzer, "_call_openai_chat_completions", raise_chat_auth_error)
 
     response = client.post(
         "/semantic-analyze",
@@ -135,7 +169,9 @@ def test_semantic_analyze_reports_openai_error_reason(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["fallback_reason"] == "openai_error: RuntimeError"
+    assert payload["fallback_reason"] == "openai_error: RuntimeError; chat_error: PermissionError"
+    assert "演示模式" not in payload["summary"]
+    assert "视觉模型" in payload["summary"]
 
 
 def test_config_status_reports_openai_dependency_without_secret():
