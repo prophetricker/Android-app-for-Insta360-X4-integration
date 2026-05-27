@@ -59,12 +59,15 @@ data class MainUiState(
     val analyzeResult: AnalyzeResponse? = null,
     val semanticResult: SemanticAnalyzeResponse? = null,
     val lastCapturedBitmap: Bitmap? = null,
+    val lastSavedPhotoPath: String? = null,
     val backendBaseUrl: String = "",
     val cellularNetworkState: CellularNetworkState = CellularNetworkState.Unavailable,
     val resultSourceLabel: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val autoCaptureEnabled: Boolean = false
+    val autoCaptureEnabled: Boolean = false,
+    val autoCaptureIntervalMs: Long = 500,
+    val totalPhotosCaptured: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -187,18 +190,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun startAutoCapture() {
+    fun toggleAutoCapture() {
+        if (_uiState.value.autoCaptureEnabled) {
+            stopAutoCapture()
+        } else {
+            startAutoCapture()
+        }
+    }
+
+    fun setAutoCaptureInterval(intervalMs: Long) {
+        _uiState.update { it.copy(autoCaptureIntervalMs = intervalMs.coerceAtLeast(500L)) }
+    }
+
+    fun startAutoCapture() {
+        if (_uiState.value.autoCaptureEnabled) return
         autoCaptureJob?.cancel()
         autoCaptureJob = viewModelScope.launch {
-            _uiState.update { it.copy(autoCaptureEnabled = true) }
+            _uiState.update { it.copy(autoCaptureEnabled = true, totalPhotosCaptured = 0) }
             while (isActive) {
                 capturePhoto()
-                delay(500)
+                delay(_uiState.value.autoCaptureIntervalMs)
             }
         }
     }
 
-    private fun stopAutoCapture() {
+    fun stopAutoCapture() {
         autoCaptureJob?.cancel()
         autoCaptureJob = null
         _uiState.update { it.copy(autoCaptureEnabled = false) }

@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.ui.theme.CameraDisconnected
@@ -141,12 +142,26 @@ fun VoiceInputButton(
 
         if (state is SpeechRecognitionState.Error) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = state.message,
-                style = MaterialTheme.typography.bodySmall,
-                color = CameraDisconnected,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CameraDisconnected,
+                    textAlign = TextAlign.Center
+                )
+                if (state.userAction != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = state.userAction,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PrimaryBlue,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }
