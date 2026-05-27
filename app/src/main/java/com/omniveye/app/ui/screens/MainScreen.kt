@@ -57,6 +57,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.omniveye.app.camera.CameraConnectionState
+import com.omniveye.app.camera.SdkPreviewFrameHost
 import com.omniveye.app.cloud.CellularNetworkState
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.ui.components.CameraStatusCard
@@ -138,69 +139,80 @@ fun MainScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Background
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            CameraStatusCard(
-                cameraState = uiState.displayCameraState,
-                cloudState = uiState.cloudState,
-                onConnectClick = {
-                    viewModel.connectToCamera()
-                },
-                onDisconnectClick = { viewModel.disconnectCamera() }
+            SdkPreviewFrameHost(
+                enabled = uiState.displayCameraState is CameraConnectionState.Connected,
+                onFrame = viewModel::updateSdkPreviewFrame,
+                modifier = Modifier.size(64.dp)
             )
 
-            BackendUrlCard(
-                baseUrl = uiState.backendBaseUrl,
-                isLoading = uiState.isLoading,
-                cameraState = uiState.displayCameraState,
-                cellularNetworkState = uiState.cellularNetworkState,
-                onSaveClick = { viewModel.updateBackendBaseUrl(it) },
-                onCheckClick = { viewModel.updateBackendBaseUrl(it) }
-            )
-
-            PhotoCaptureCard(
-                isConnected = uiState.displayCameraState is CameraConnectionState.Connected,
-                isLoading = uiState.isLoading,
-                onCaptureClick = { viewModel.capturePhoto() },
-                onSurroundingsClick = { viewModel.analyzeSurroundings() }
-            )
-
-            VoiceInputSection(
-                recognitionState = uiState.speechRecognitionState,
-                recognizedText = uiState.recognizedText,
-                hasAudioPermission = audioPermissionState.status.isGranted,
-                onRequestPermission = { audioPermissionState.launchPermissionRequest() },
-                onStartListening = { viewModel.startListening() },
-                onStopListening = { viewModel.stopListening() }
-            )
-
-            AnimatedVisibility(
-                visible = uiState.analyzeResult != null || uiState.semanticResult != null,
-                enter = fadeIn(),
-                exit = fadeOut()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                uiState.semanticResult?.let { result ->
-                    SemanticResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
-                } ?: uiState.analyzeResult?.let { result ->
-                    AnalyzeResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                CameraStatusCard(
+                    cameraState = uiState.displayCameraState,
+                    cloudState = uiState.cloudState,
+                    onConnectClick = {
+                        viewModel.connectToCamera()
+                    },
+                    onDisconnectClick = { viewModel.disconnectCamera() }
+                )
+
+                BackendUrlCard(
+                    baseUrl = uiState.backendBaseUrl,
+                    isLoading = uiState.isLoading,
+                    cameraState = uiState.displayCameraState,
+                    cellularNetworkState = uiState.cellularNetworkState,
+                    onSaveClick = { viewModel.updateBackendBaseUrl(it) },
+                    onCheckClick = { viewModel.updateBackendBaseUrl(it) }
+                )
+
+                PhotoCaptureCard(
+                    isConnected = uiState.displayCameraState is CameraConnectionState.Connected,
+                    isLoading = uiState.isLoading,
+                    onCaptureClick = { viewModel.capturePhoto() },
+                    onSurroundingsClick = { viewModel.analyzeSurroundings() }
+                )
+
+                VoiceInputSection(
+                    recognitionState = uiState.speechRecognitionState,
+                    recognizedText = uiState.recognizedText,
+                    hasAudioPermission = audioPermissionState.status.isGranted,
+                    onRequestPermission = { audioPermissionState.launchPermissionRequest() },
+                    onStartListening = { viewModel.startListening() },
+                    onStopListening = { viewModel.stopListening() }
+                )
+
+                AnimatedVisibility(
+                    visible = uiState.analyzeResult != null || uiState.semanticResult != null,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    uiState.semanticResult?.let { result ->
+                        SemanticResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
+                    } ?: uiState.analyzeResult?.let { result ->
+                        AnalyzeResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
+                    }
                 }
+
+                VoiceOutputDisplay(
+                    text = uiState.processedResult.ifBlank { uiState.currentTtsText },
+                    ttsState = uiState.ttsState,
+                    onSpeakClick = { viewModel.speakText(uiState.processedResult) },
+                    onStopClick = { viewModel.stopSpeaking() }
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
-
-            VoiceOutputDisplay(
-                text = uiState.processedResult.ifBlank { uiState.currentTtsText },
-                ttsState = uiState.ttsState,
-                onSpeakClick = { viewModel.speakText(uiState.processedResult) },
-                onStopClick = { viewModel.stopSpeaking() }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

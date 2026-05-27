@@ -17,6 +17,18 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        maven {
+            url = uri("https://androidsdk.insta360.com/repository/maven-public/")
+            isAllowInsecureProtocol = true
+            credentials {
+                username = providers.gradleProperty("INSTA360_MAVEN_USER")
+                    .orElse(providers.environmentVariable("INSTA360_MAVEN_USER"))
+                    .orNull
+                password = providers.gradleProperty("INSTA360_MAVEN_PASSWORD")
+                    .orElse(providers.environmentVariable("INSTA360_MAVEN_PASSWORD"))
+                    .orNull
+            }
+        }
     }
 }
 

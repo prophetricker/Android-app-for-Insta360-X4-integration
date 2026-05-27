@@ -1,7 +1,12 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val insta360SdkEnabled = providers.gradleProperty("INSTA360_SDK_ENABLED")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
 
 android {
     namespace = "com.omniveye.app"
@@ -10,11 +15,12 @@ android {
 
     defaultConfig {
         applicationId = "com.omniveye.app"
-        minSdk = 26
+        minSdk = if (insta360SdkEnabled.get()) 28 else 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
         buildConfigField("String", "CLOUD_BASE_URL", "\"${providers.gradleProperty("CLOUD_BASE_URL").orElse("http://10.0.2.2:8000/").get()}\"")
+        buildConfigField("boolean", "INSTA360_SDK_ENABLED", insta360SdkEnabled.get().toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -46,13 +52,11 @@ android {
         buildConfig = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
-
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/rxjava.properties"
+            pickFirsts += "lib/arm64-v8a/libc++_shared.so"
         }
     }
 }
@@ -100,6 +104,11 @@ dependencies {
 
     // Accompanist Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
+
+    if (insta360SdkEnabled.get()) {
+        implementation("com.arashivision.sdk:sdkcamera:1.9.11")
+        implementation("com.arashivision.sdk:sdkmedia:1.9.11")
+    }
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -82,6 +82,7 @@ data class FrameAnalysisTiming(
 }
 
 enum class FrameAcquisitionPlan {
+    UseSdkPreviewFrame,
     UseLatestCameraFrame,
     CaptureCameraFrame,
     UseDevelopmentSample
@@ -103,8 +104,16 @@ fun selectSurroundingsFramePlan(
 
 fun selectObstacleFramePlan(
     cameraState: CameraConnectionState,
+    hasLatestPreviewFrame: Boolean,
     hasLatestCameraFrame: Boolean
-): FrameAcquisitionPlan = selectSurroundingsFramePlan(cameraState, hasLatestCameraFrame)
+): FrameAcquisitionPlan {
+    return when {
+        hasLatestPreviewFrame ->
+            FrameAcquisitionPlan.UseSdkPreviewFrame
+        else ->
+            selectSurroundingsFramePlan(cameraState, hasLatestCameraFrame)
+    }
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -215,6 +224,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return cameraManager.checkCameraWiFiConnection()
     }
 
+    fun updateSdkPreviewFrame(bitmap: Bitmap) {
+        cameraManager.updatePreviewFrame(bitmap)
+    }
+
     fun updateBackendBaseUrl(baseUrl: String) {
         val normalized = cloudRepository.updateBaseUrl(baseUrl)
         _uiState.update { it.copy(backendBaseUrl = normalized) }
@@ -274,12 +287,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val latestCameraBitmap = cameraManager.lastPhotoBitmap.value
+            val latestPreviewBitmap = cameraManager.lastPreviewBitmap.value
             when (
                 selectObstacleFramePlan(
                     cameraState = cameraManager.connectionState.value,
+                    hasLatestPreviewFrame = latestPreviewBitmap != null,
                     hasLatestCameraFrame = latestCameraBitmap != null
                 )
             ) {
+                FrameAcquisitionPlan.UseSdkPreviewFrame -> {
+                    Log.d(TAG, "ObstacleClickTiming usingSdkPreviewFrameMs=${System.currentTimeMillis() - clickStart}")
+                    uploadImage(
+                        bitmap = latestPreviewBitmap ?: return@launch,
+                        source = AnalyzeFrameSource.CameraCapture,
+                        sourceLabel = "X4 SDK 预览帧",
+                        captureMs = null
+                    )
+                }
                 FrameAcquisitionPlan.UseLatestCameraFrame -> {
                     Log.d(TAG, "ObstacleClickTiming usingLatestCameraFrameMs=${System.currentTimeMillis() - clickStart}")
                     uploadImage(
@@ -436,6 +460,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 hasLatestCameraFrame = latestCameraBitmap != null
             )
         ) {
+            FrameAcquisitionPlan.UseSdkPreviewFrame -> {
+                capturePhotoForSurroundings()
+            }
             FrameAcquisitionPlan.UseLatestCameraFrame -> {
                 analyzeSurroundingsBitmap(
                     bitmap = latestCameraBitmap ?: return,

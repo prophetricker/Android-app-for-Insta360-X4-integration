@@ -129,6 +129,9 @@ class CameraManager(private val context: Context) {
     private val _lastPhotoBitmap = MutableStateFlow<Bitmap?>(null)
     val lastPhotoBitmap: StateFlow<Bitmap?> = _lastPhotoBitmap.asStateFlow()
 
+    private val _lastPreviewBitmap = MutableStateFlow<Bitmap?>(null)
+    val lastPreviewBitmap: StateFlow<Bitmap?> = _lastPreviewBitmap.asStateFlow()
+
     private val _isTakingPhoto = MutableStateFlow(false)
     val isTakingPhoto: StateFlow<Boolean> = _isTakingPhoto.asStateFlow()
 
@@ -318,8 +321,14 @@ class CameraManager(private val context: Context) {
         stopContinuousCapture()
         _connectionState.value = CameraConnectionState.Disconnected
         _photoList.value = emptyList()
+        _lastPreviewBitmap.value = null
         cameraSessionId = null
         Log.d(TAG, "Camera disconnected")
+    }
+
+    fun updatePreviewFrame(bitmap: Bitmap) {
+        _lastPreviewBitmap.value = bitmap
+        Log.d(TAG, "Updated SDK preview frame: ${bitmap.width}x${bitmap.height}")
     }
 
     suspend fun takePhoto(): CameraOperationResult {
