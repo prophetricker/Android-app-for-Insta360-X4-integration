@@ -5,7 +5,7 @@ from PIL import Image
 
 from omnieye_cloud.main import app
 from omnieye_cloud.runtime_config import RuntimeConfig, load_env_file
-from omnieye_cloud.semantic import SemanticAnalyzer, SemanticMode
+from omnieye_cloud.semantic import SemanticAnalyzer, SemanticMode, _prompt_for_mode
 
 
 client = TestClient(app)
@@ -70,6 +70,14 @@ def test_semantic_analyze_surroundings_returns_environment_summary(monkeypatch):
     assert result.objects
     assert "环境" in result.summary or "周围" in result.summary
     assert result.fallback_reason == "openai_api_key_missing"
+
+
+def test_surroundings_prompt_requires_full_panorama_directions():
+    prompt = _prompt_for_mode(SemanticMode.SURROUNDINGS, query=None)
+
+    for text in ["前方", "后方", "左侧", "右侧", "头顶", "脚下"]:
+        assert text in prompt
+    assert "不要只描述正前方" in prompt
 
 
 def test_semantic_analyze_surroundings_endpoint_contract(monkeypatch):

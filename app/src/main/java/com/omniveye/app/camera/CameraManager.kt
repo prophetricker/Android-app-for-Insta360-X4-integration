@@ -323,25 +323,43 @@ class CameraManager(private val context: Context) {
     }
 
     suspend fun takePhoto(): CameraOperationResult {
+        val takePhotoStart = System.currentTimeMillis()
+        Log.d(TAG, "TakePhotoTiming start state=${_connectionState.value}")
         if (_connectionState.value != CameraConnectionState.Connected) {
+            Log.d(TAG, "TakePhotoTiming rejected elapsedMs=${System.currentTimeMillis() - takePhotoStart} reason=not_connected")
             return CameraOperationResult.Error("Camera not connected")
         }
 
-        if (!hasX4WifiRoute()) {
+        var hasRoute = false
+        val routeCheckMs = measureTimeMillis {
+            hasRoute = hasX4WifiRoute()
+        }
+        Log.d(TAG, "TakePhotoTiming routeCheckMs=$routeCheckMs hasX4Route=$hasRoute")
+        if (!hasRoute) {
             val message = "X4 WiFi route is not active. Reconnect the phone to the X4 WiFi and keep that WiFi connected."
             Log.w(TAG, message)
             _connectionState.value = CameraConnectionState.Error(message)
+            Log.d(TAG, "TakePhotoTiming rejected elapsedMs=${System.currentTimeMillis() - takePhotoStart} reason=no_x4_route")
             return CameraOperationResult.Error(message)
         }
 
         if (_isTakingPhoto.value) {
+            Log.d(TAG, "TakePhotoTiming rejected elapsedMs=${System.currentTimeMillis() - takePhotoStart} reason=already_taking")
             return CameraOperationResult.Error("Already taking photo")
         }
 
         _isTakingPhoto.value = true
         return try {
             Log.d(TAG, "Taking photo...")
-            val result = capturePhoto()
+            var result: CameraOperationResult
+            val captureMs = measureTimeMillis {
+                result = capturePhoto()
+            }
+            Log.d(
+                TAG,
+                "TakePhotoTiming captureMs=$captureMs totalMs=${System.currentTimeMillis() - takePhotoStart} " +
+                    "result=${result.javaClass.simpleName}"
+            )
             when (result) {
                 is CameraOperationResult.Success -> {
                     _capturedPhotoCount.value++
@@ -357,13 +375,17 @@ class CameraManager(private val context: Context) {
     }
 
     private suspend fun capturePhoto(): CameraOperationResult = withContext(Dispatchers.IO) {
+        val captureStart = System.currentTimeMillis()
         try {
             Log.d(TAG, "Sending takePicture command...")
 
             // Check camera state first
-            val stateJson = checkCameraState()
+            var stateJson: JSONObject
+            val stateMs = measureTimeMillis {
+                stateJson = checkCameraState()
+            }
             val currentState = stateJson.optString("state", "Unknown")
-            Log.d(TAG, "Camera state before capture: $currentState")
+            Log.d(TAG, "CaptureTiming stateMs=$stateMs state=$currentState")
 
             val jsonBody = JSONObject().apply {
                 put("name", "camera.takePicture")
@@ -372,7 +394,11 @@ class CameraManager(private val context: Context) {
                 })
             }
 
-            val response = sendOscExecuteCommand(jsonBody.toString())
+            var response: String
+            val executeMs = measureTimeMillis {
+                response = sendOscExecuteCommand(jsonBody.toString())
+            }
+            Log.d(TAG, "CaptureTiming executeMs=$executeMs")
             Log.d(TAG, "Take picture initial response: $response")
 
             val jsonResponse = JSONObject(response)
@@ -390,17 +416,32 @@ class CameraManager(private val context: Context) {
             val id = jsonResponse.optString("id", null)
             if (id != null && jsonResponse.optString("state", "") == "inProgress") {
                 Log.d(TAG, "Photo capture in progress, polling for result...")
-                return@withContext pollForPhotoResult(id)
+                var pollResult: CameraOperationResult
+                val pollMs = measureTimeMillis {
+                    pollResult = pollForPhotoResult(id)
+                }
+                Log.d(TAG, "CaptureTiming pollMs=$pollMs totalMs=${System.currentTimeMillis() - captureStart}")
+                return@withContext pollResult
             }
 
             // Handle sync response (state: "done")
             if (jsonResponse.optString("state", "") == "done" && jsonResponse.has("results")) {
-                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"))
+                var doneResult: CameraOperationResult
+                val processMs = measureTimeMillis {
+                    doneResult = processPhotoResults(jsonResponse.getJSONObject("results"))
+                }
+                Log.d(TAG, "CaptureTiming processMs=$processMs totalMs=${System.currentTimeMillis() - captureStart}")
+                return@withContext doneResult
             }
 
             // Fallback: try to get results directly
             if (jsonResponse.has("results")) {
-                return@withContext processPhotoResults(jsonResponse.getJSONObject("results"))
+                var fallbackResult: CameraOperationResult
+                val processMs = measureTimeMillis {
+                    fallbackResult = processPhotoResults(jsonResponse.getJSONObject("results"))
+                }
+                Log.d(TAG, "CaptureTiming fallbackProcessMs=$processMs totalMs=${System.currentTimeMillis() - captureStart}")
+                return@withContext fallbackResult
             }
 
             Log.w(TAG, "Unexpected response format: $response")
@@ -441,11 +482,14 @@ class CameraManager(private val context: Context) {
 
                 val statusBody = x4OscCommandStatusBody(commandId)
 
-                val response = sendOscStatusCommand(statusBody)
+                var response: String
+                val statusMs = measureTimeMillis {
+                    response = sendOscStatusCommand(statusBody)
+                }
                 val jsonResponse = JSONObject(response)
 
                 val state = jsonResponse.optString("state", "")
-                Log.d(TAG, "Poll attempt $attempt: state=$state")
+                Log.d(TAG, "Poll attempt $attempt: state=$state statusMs=$statusMs")
 
                 when (state) {
                     "done" -> {
@@ -478,6 +522,7 @@ class CameraManager(private val context: Context) {
     }
 
     private fun processPhotoResults(results: JSONObject): CameraOperationResult {
+        val processStart = System.currentTimeMillis()
         // Try different possible field names for file URL
         val fileUrl = results.optString("fileUrl",
             results.optString("fileUri",
@@ -489,12 +534,17 @@ class CameraManager(private val context: Context) {
             if (fileGroup != null && fileGroup.length() > 0) {
                 val actualUrl = fileGroup.getString(0)
                 Log.d(TAG, "Photo captured, fileUrl from group: $actualUrl")
-                val bitmap = downloadPhotoBitmap(actualUrl)
-                if (bitmap != null) {
-                    _lastPhotoBitmap.value = bitmap
+                var bitmap: Bitmap?
+                val downloadMs = measureTimeMillis {
+                    bitmap = downloadPhotoBitmap(actualUrl)
+                }
+                Log.d(TAG, "ProcessPhotoTiming downloadMs=$downloadMs totalMs=${System.currentTimeMillis() - processStart}")
+                val downloadedBitmap = bitmap
+                if (downloadedBitmap != null) {
+                    _lastPhotoBitmap.value = downloadedBitmap
                     _photoList.value = _photoList.value + actualUrl
                     Log.d(TAG, "Photo ready for analysis without blocking gallery save")
-                    return CameraOperationResult.Success(bitmap)
+                    return CameraOperationResult.Success(downloadedBitmap)
                 }
             }
 
@@ -503,12 +553,17 @@ class CameraManager(private val context: Context) {
         }
 
         Log.d(TAG, "Photo captured, fileUrl: $fileUrl")
-        val bitmap = downloadPhotoBitmap(fileUrl)
-        if (bitmap != null) {
-            _lastPhotoBitmap.value = bitmap
+        var bitmap: Bitmap?
+        val downloadMs = measureTimeMillis {
+            bitmap = downloadPhotoBitmap(fileUrl)
+        }
+        Log.d(TAG, "ProcessPhotoTiming downloadMs=$downloadMs totalMs=${System.currentTimeMillis() - processStart}")
+        val downloadedBitmap = bitmap
+        if (downloadedBitmap != null) {
+            _lastPhotoBitmap.value = downloadedBitmap
             _photoList.value = _photoList.value + fileUrl
             Log.d(TAG, "Photo ready for analysis without blocking gallery save")
-            return CameraOperationResult.Success(bitmap)
+            return CameraOperationResult.Success(downloadedBitmap)
         } else {
             return CameraOperationResult.Error("Failed to download photo")
         }

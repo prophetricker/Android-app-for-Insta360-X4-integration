@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.omniveye.app.camera.CameraConnectionState
@@ -101,6 +102,10 @@ fun selectSurroundingsFramePlan(
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "MainViewModel"
+    }
 
     private val cameraManager = CameraManager(application)
     private val speechToTextManager = SpeechToTextManager(application)
@@ -248,7 +253,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun capturePhoto() {
+        val clickStart = System.currentTimeMillis()
+        Log.d(TAG, "ObstacleClickTiming click received cameraState=${cameraManager.connectionState.value}")
         viewModelScope.launch {
+            Log.d(TAG, "ObstacleClickTiming coroutineStartedMs=${System.currentTimeMillis() - clickStart}")
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -262,10 +270,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             when (cameraManager.connectionState.value) {
                 is CameraConnectionState.Connected -> {
+                    Log.d(TAG, "ObstacleClickTiming enteringTakePhotoMs=${System.currentTimeMillis() - clickStart}")
                     var capture: com.omniveye.app.camera.CameraOperationResult
                     val captureMs = measureTimeMillis {
                         capture = cameraManager.takePhoto()
                     }
+                    Log.d(TAG, "ObstacleClickTiming takePhotoReturnedMs=${System.currentTimeMillis() - clickStart} captureMs=$captureMs")
                     when (val result = capture) {
                         is com.omniveye.app.camera.CameraOperationResult.Success -> {
                             val bitmap = result.data as? Bitmap
@@ -290,6 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 else -> {
+                    Log.d(TAG, "ObstacleClickTiming usingDevelopmentSampleMs=${System.currentTimeMillis() - clickStart}")
                     val bitmap = DevelopmentSampleFrame.createBitmap()
                     uploadImage(
                         bitmap = bitmap,
@@ -426,7 +437,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun capturePhotoForSurroundings() {
+        val clickStart = System.currentTimeMillis()
+        Log.d(TAG, "SurroundingsClickTiming capture requested cameraState=${cameraManager.connectionState.value}")
         viewModelScope.launch {
+            Log.d(TAG, "SurroundingsClickTiming coroutineStartedMs=${System.currentTimeMillis() - clickStart}")
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -439,9 +453,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             var capture: com.omniveye.app.camera.CameraOperationResult
+            Log.d(TAG, "SurroundingsClickTiming enteringTakePhotoMs=${System.currentTimeMillis() - clickStart}")
             val captureMs = measureTimeMillis {
                 capture = cameraManager.takePhoto()
             }
+            Log.d(TAG, "SurroundingsClickTiming takePhotoReturnedMs=${System.currentTimeMillis() - clickStart} captureMs=$captureMs")
             when (val result = capture) {
                 is com.omniveye.app.camera.CameraOperationResult.Success -> {
                     val bitmap = result.data as? Bitmap
