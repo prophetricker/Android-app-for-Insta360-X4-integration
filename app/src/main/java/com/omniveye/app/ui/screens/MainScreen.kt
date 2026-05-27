@@ -75,6 +75,9 @@ import com.omniveye.app.ui.theme.Warning
 import com.omniveye.app.viewmodel.MainUiState
 import com.omniveye.app.viewmodel.MainViewModel
 
+const val MAIN_ACTION_OBSTACLE_AVOIDANCE = "避障"
+const val MAIN_ACTION_SURROUNDINGS = "查看周围环境"
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MainScreen(
@@ -148,7 +151,7 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             CameraStatusCard(
-                cameraState = uiState.cameraState,
+                cameraState = uiState.displayCameraState,
                 cloudState = uiState.cloudState,
                 onConnectClick = {
                     if (checkWifiEnabled(context)) {
@@ -163,27 +166,26 @@ fun MainScreen(
             BackendUrlCard(
                 baseUrl = uiState.backendBaseUrl,
                 isLoading = uiState.isLoading,
-                cameraState = uiState.cameraState,
+                cameraState = uiState.displayCameraState,
                 cellularNetworkState = uiState.cellularNetworkState,
                 onSaveClick = { viewModel.updateBackendBaseUrl(it) },
                 onCheckClick = { viewModel.updateBackendBaseUrl(it) }
             )
 
             PhotoCaptureCard(
-                isConnected = uiState.cameraState is CameraConnectionState.Connected,
+                isConnected = uiState.displayCameraState is CameraConnectionState.Connected,
                 isLoading = uiState.isLoading,
                 onCaptureClick = { viewModel.capturePhoto() },
-                onDemoClick = { viewModel.playRoadshowDemo() },
-                onProductClick = { viewModel.analyzeProductDemo() },
-                onTrafficLightClick = { viewModel.analyzeTrafficLightDemo() }
+                onSurroundingsClick = { viewModel.analyzeSurroundings() }
             )
 
             VoiceInputSection(
                 recognitionState = uiState.speechRecognitionState,
+                recognizedText = uiState.recognizedText,
                 hasAudioPermission = audioPermissionState.status.isGranted,
                 onRequestPermission = { audioPermissionState.launchPermissionRequest() },
-                onStartListening = { viewModel.startListening() },
-                onStopListening = { viewModel.stopListening() }
+                onStartListening = { viewModel.handleDemoCommandVolumePress() },
+                onStopListening = { viewModel.handleDemoCommandVolumePress() }
             )
 
             AnimatedVisibility(
@@ -331,9 +333,7 @@ fun PhotoCaptureCard(
     isConnected: Boolean,
     isLoading: Boolean,
     onCaptureClick: () -> Unit,
-    onDemoClick: () -> Unit,
-    onProductClick: () -> Unit,
-    onTrafficLightClick: () -> Unit,
+    onSurroundingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -377,7 +377,7 @@ fun PhotoCaptureCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = if (isConnected) "拍摄 X4 图片并云端分析" else "未连接 X4，上传开发样张",
+                        text = if (isConnected) "X4 实机帧上传，云端现场计算" else "未连接 X4，上传开发样张",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -411,17 +411,14 @@ fun PhotoCaptureCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            if (isConnected) "拍照分析" else "样张分析",
-                            style = MaterialTheme.typography.labelLarge
-                        )
+                        Text(MAIN_ACTION_OBSTACLE_AVOIDANCE, style = MaterialTheme.typography.labelLarge)
                     }
                 }
                 Button(
-                    onClick = onDemoClick,
+                    onClick = onSurroundingsClick,
                     enabled = !isLoading,
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Warning),
+                    colors = ButtonDefaults.buttonColors(containerColor = Success),
                     modifier = Modifier.height(40.dp)
                 ) {
                     Icon(
@@ -430,25 +427,7 @@ fun PhotoCaptureCard(
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("结果演示", style = MaterialTheme.typography.labelLarge)
-                }
-                Button(
-                    onClick = onProductClick,
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueLight),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Text("商品识别", style = MaterialTheme.typography.labelLarge)
-                }
-                Button(
-                    onClick = onTrafficLightClick,
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Success),
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Text("红绿灯", style = MaterialTheme.typography.labelLarge)
+                    Text(MAIN_ACTION_SURROUNDINGS, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -458,6 +437,7 @@ fun PhotoCaptureCard(
 @Composable
 fun VoiceInputSection(
     recognitionState: SpeechRecognitionState,
+    recognizedText: String,
     hasAudioPermission: Boolean,
     onRequestPermission: () -> Unit,
     onStartListening: () -> Unit,
@@ -521,6 +501,24 @@ fun VoiceInputSection(
                     enabled = true,
                     onStartListening = onStartListening,
                     onStopListening = onStopListening
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onStartListening,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueLight)
+                ) {
+                    Text("模拟音量下键", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
+            if (recognizedText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = recognizedText,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PrimaryBlue,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 

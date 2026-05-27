@@ -140,18 +140,7 @@ class SpeechToTextManager(private val context: Context) {
 
             override fun onError(error: Int) {
                 isListening = false
-                val errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                    SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
-                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech recognized"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognition service busy"
-                    SpeechRecognizer.ERROR_SERVER -> "Server error"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
-                    else -> "Unknown error"
-                }
+                val errorMessage = formatSpeechError(error)
                 Log.e(TAG, "Recognition error: $errorMessage (code: $error)")
                 _recognitionState.value = SpeechRecognitionState.Error(errorMessage)
             }

@@ -25,6 +25,7 @@ __pycache__/
 .pytest_cache/
 .pytest_tmp*/
 *.pyc
+cloud-backend/.env
 cloud-backend/uploads/
 cloud-backend/**/__pycache__/
 

@@ -54,7 +54,8 @@ data class AnalyzeResponse(
 
 enum class SemanticAnalyzeMode(val value: String) {
     PRODUCT("product"),
-    TRAFFIC_LIGHT("traffic_light")
+    TRAFFIC_LIGHT("traffic_light"),
+    SURROUNDINGS("surroundings")
 }
 
 data class SemanticAnalyzeResponse(
@@ -73,7 +74,9 @@ data class SemanticAnalyzeResponse(
     @SerializedName("confidence")
     val confidence: Double,
     @SerializedName("latency_ms")
-    val latencyMs: Int
+    val latencyMs: Int,
+    @SerializedName("fallback_reason")
+    val fallbackReason: String?
 )
 
 data class VoiceProcessRequest(

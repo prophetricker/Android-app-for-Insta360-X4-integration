@@ -21,11 +21,22 @@ import com.omniveye.app.cloud.SemanticAnalyzeResponse
 import com.omniveye.app.cloud.VoiceProcessResponse
 import com.omniveye.app.demo.DevelopmentSampleFrame
 import com.omniveye.app.demo.RoadshowDemo
+import com.omniveye.app.demo.roadshowProductResult
+import com.omniveye.app.demo.roadshowAnalyzeSourceLabel
+import com.omniveye.app.demo.roadshowDisplayedCameraState
+import com.omniveye.app.demo.roadshowSemanticSourceLabel
+import com.omniveye.app.demo.roadshowTrafficLightResult
+import com.omniveye.app.demo.roadshowTreeObstacleResult
 import com.omniveye.app.feedback.roadshowVibrationDurationMs
+import com.omniveye.app.speech.DemoCommandAction
+import com.omniveye.app.speech.DemoCommandController
+import com.omniveye.app.speech.DemoCommandEvent
 import com.omniveye.app.speech.SpeechRecognitionState
 import com.omniveye.app.speech.SpeechToTextManager
 import com.omniveye.app.speech.TtsState
 import com.omniveye.app.speech.TextToSpeechManager
+import com.omniveye.app.speech.VoiceCommandAction
+import com.omniveye.app.speech.routeVoiceCommand
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -38,6 +49,7 @@ import kotlinx.coroutines.launch
 
 data class MainUiState(
     val cameraState: CameraConnectionState = CameraConnectionState.Disconnected,
+    val displayCameraState: CameraConnectionState = roadshowDisplayedCameraState(cameraState),
     val cloudState: CloudState = CloudState.Idle,
     val speechRecognitionState: SpeechRecognitionState = SpeechRecognitionState.Idle,
     val ttsState: TtsState = TtsState.Idle,
@@ -61,6 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val speechToTextManager = SpeechToTextManager(application)
     private val textToSpeechManager = TextToSpeechManager(application)
     private val cloudRepository = CloudRepository(application)
+    private val demoCommandController = DemoCommandController()
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         application.getSystemService(VibratorManager::class.java)?.defaultVibrator
     } else {
@@ -93,7 +106,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeStates() {
         viewModelScope.launch {
             cameraManager.connectionState.collect { state ->
-                _uiState.update { it.copy(cameraState = state) }
+                _uiState.update {
+                    it.copy(
+                        cameraState = state,
+                        displayCameraState = roadshowDisplayedCameraState(state)
+                    )
+                }
                 when (state) {
                     is com.omniveye.app.camera.CameraConnectionState.Connected -> {
                         stopAutoCapture()
@@ -188,29 +206,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun capturePhoto() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, resultSourceLabel = null) }
-
-            if (cameraManager.connectionState.value != CameraConnectionState.Connected) {
-                uploadImage(
-                    bitmap = DevelopmentSampleFrame.createBitmap(),
-                    source = AnalyzeFrameSource.DevelopmentSample,
-                    sourceLabel = DevelopmentSampleFrame.default.label
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    analyzeResult = null,
+                    semanticResult = null,
+                    errorMessage = null,
+                    resultSourceLabel = null
                 )
-                return@launch
             }
 
-            val result = cameraManager.takePhoto()
-            when (result) {
-                is com.omniveye.app.camera.CameraOperationResult.Success -> {
-                    fetchAndUploadLatestPhoto()
-                }
-                is com.omniveye.app.camera.CameraOperationResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
+            when (cameraManager.connectionState.value) {
+                is CameraConnectionState.Connected -> {
+                    when (val result = cameraManager.takePhoto()) {
+                        is com.omniveye.app.camera.CameraOperationResult.Success -> {
+                            val bitmap = result.data as? Bitmap
+                            if (bitmap != null) {
+                                uploadImage(
+                                    bitmap = bitmap,
+                                    source = AnalyzeFrameSource.CameraCapture,
+                                    sourceLabel = roadshowAnalyzeSourceLabel("X4 实拍")
+                                )
+                            } else {
+                                _uiState.update {
+                                    it.copy(isLoading = false, errorMessage = "X4 did not return a bitmap")
+                                }
+                            }
+                        }
+                        is com.omniveye.app.camera.CameraOperationResult.Error -> {
+                            _uiState.update {
+                                it.copy(isLoading = false, errorMessage = result.message)
+                            }
+                        }
                     }
+                }
+                else -> {
+                    val bitmap = DevelopmentSampleFrame.createBitmap()
+                    uploadImage(
+                        bitmap = bitmap,
+                        source = AnalyzeFrameSource.DevelopmentSample,
+                        sourceLabel = "开发样张"
+                    )
                 }
             }
         }
@@ -223,7 +259,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 uploadImage(
                     bitmap = bitmap,
                     source = AnalyzeFrameSource.CameraCapture,
-                    sourceLabel = "X4 实拍"
+                    sourceLabel = roadshowAnalyzeSourceLabel("X4 实拍")
                 )
             } else {
                 _uiState.update {
@@ -290,19 +326,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun analyzeProductDemo(query: String = "牛奶") {
-        analyzeSemanticDemo(
-            mode = SemanticAnalyzeMode.PRODUCT,
-            query = query,
-            sourceLabel = "商品识别"
+        handleSemanticResult(
+            result = roadshowProductResult(),
+            sourceLabel = roadshowSemanticSourceLabel("商品识别")
         )
     }
 
     fun analyzeTrafficLightDemo() {
-        analyzeSemanticDemo(
-            mode = SemanticAnalyzeMode.TRAFFIC_LIGHT,
-            query = null,
-            sourceLabel = "红绿灯识别"
+        handleSemanticResult(
+            result = roadshowTrafficLightResult(),
+            sourceLabel = roadshowSemanticSourceLabel("红绿灯识别")
         )
+    }
+
+    fun analyzeSurroundings() {
+        val bitmap = cameraManager.lastPhotoBitmap.value ?: DevelopmentSampleFrame.createBitmap()
+        val source = if (cameraManager.connectionState.value is CameraConnectionState.Connected &&
+            cameraManager.lastPhotoBitmap.value != null
+        ) {
+            AnalyzeFrameSource.CameraCapture
+        } else {
+            AnalyzeFrameSource.DevelopmentSample
+        }
+        val sourceLabel = if (source == AnalyzeFrameSource.CameraCapture) {
+            "X4 实拍 · 周围环境"
+        } else {
+            "开发样张 · 周围环境"
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    lastCapturedBitmap = bitmap,
+                    resultSourceLabel = sourceLabel,
+                    analyzeResult = null,
+                    semanticResult = null,
+                    errorMessage = null
+                )
+            }
+
+            when (
+                val result = cloudRepository.semanticAnalyzeFrame(
+                    bitmap = bitmap,
+                    mode = SemanticAnalyzeMode.SURROUNDINGS,
+                    query = null,
+                    source = source
+                )
+            ) {
+                is CloudResult.Success -> handleSemanticResult(result.data, sourceLabel)
+                is CloudResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = result.message
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun analyzeSemanticDemo(
@@ -367,23 +449,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         speechToTextManager.stopListening()
     }
 
-    fun processVoiceInput(text: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+    fun reportSpeechError(message: String) {
+        _uiState.update { it.copy(speechRecognitionState = SpeechRecognitionState.Error(message)) }
+    }
 
-            when (val result = cloudRepository.processVoice(text)) {
-                is CloudResult.Success -> {
-                    _uiState.update { it.copy(isLoading = false) }
-                    speakResult(result.data.processedText ?: result.data.inputText)
-                }
-                is CloudResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }
+    fun handleDemoCommandVolumePress() {
+        when (val event = demoCommandController.onVolumeDownPressed()) {
+            DemoCommandEvent.Recognizing -> showDemoCommandRecognizing()
+            is DemoCommandEvent.Analyze -> runDemoCommand(event.action)
+        }
+    }
+
+    private fun showDemoCommandRecognizing() {
+        _uiState.update {
+            it.copy(
+                speechRecognitionState = SpeechRecognitionState.Listening,
+                recognizedText = "正在识别指令",
+                processedResult = "正在识别指令",
+                errorMessage = null
+            )
+        }
+    }
+
+    private fun runDemoCommand(action: DemoCommandAction) {
+        _uiState.update {
+            it.copy(
+                speechRecognitionState = SpeechRecognitionState.Processing,
+                recognizedText = "分析指令中",
+                processedResult = "分析指令中",
+                errorMessage = null
+            )
+        }
+        when (action) {
+            DemoCommandAction.ProductRecognition -> {
+                speakResult("分析指令中，开始商品识别")
+                analyzeProductDemo()
+            }
+            DemoCommandAction.TrafficLightRecognition -> {
+                speakResult("分析指令中，开始红绿灯识别")
+                analyzeTrafficLightDemo()
+            }
+            DemoCommandAction.ObstacleAvoidance -> {
+                speakResult("分析指令中，开始前方避障分析")
+                capturePhoto()
+            }
+        }
+    }
+
+    fun processVoiceInput(text: String) {
+        when (routeVoiceCommand(text)) {
+            VoiceCommandAction.ProductRecognition -> {
+                speakResult("开始商品识别")
+                analyzeProductDemo()
+            }
+            VoiceCommandAction.TrafficLightRecognition -> {
+                speakResult("开始红绿灯识别")
+                analyzeTrafficLightDemo()
+            }
+            VoiceCommandAction.ObstacleAvoidance -> {
+                speakResult("开始前方避障分析")
+                capturePhoto()
+            }
+            VoiceCommandAction.Unknown -> {
+                speakResult("请说商品识别、红绿灯识别或前方避障")
             }
         }
     }

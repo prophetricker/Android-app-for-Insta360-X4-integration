@@ -21,7 +21,8 @@ class SemanticAnalyzeContractTest {
               "target_found": true,
               "product_name": null,
               "confidence": 0.82,
-              "latency_ms": 1500
+              "latency_ms": 1500,
+              "fallback_reason": null
             }
         """.trimIndent()
 
@@ -33,6 +34,28 @@ class SemanticAnalyzeContractTest {
         assertEquals(0.82, response.confidence, 0.001)
         assertTrue(response.summary.contains("绿灯"))
         assertEquals(listOf("traffic light", "crosswalk"), response.objects)
+        assertEquals(null, response.fallbackReason)
+    }
+
+    @Test
+    fun parsesSemanticFallbackReasonFromCloudBackendJson() {
+        val json = """
+            {
+              "mode": "product",
+              "summary": "演示模式：画面中疑似有牛奶货架，请靠近后再次扫描确认。",
+              "objects": ["shelf"],
+              "traffic_light": null,
+              "target_found": true,
+              "product_name": "牛奶",
+              "confidence": 0.55,
+              "latency_ms": 12,
+              "fallback_reason": "openai_error: AuthenticationError"
+            }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SemanticAnalyzeResponse::class.java)
+
+        assertEquals("openai_error: AuthenticationError", response.fallbackReason)
     }
 
     @Test
@@ -49,5 +72,28 @@ class SemanticAnalyzeContractTest {
         assertTrue(framePart.headers.toString().contains("name=\"frame\""))
         assertEquals("product", readRequestBody(modePart))
         assertEquals("牛奶", readRequestBody(queryPart))
+    }
+    @Test
+    fun supportsSurroundingsModeForEnvironmentOverview() {
+        val json = """
+            {
+              "mode": "surroundings",
+              "summary": "周围是超市场景，左侧有饮品货架，前方通道暂时通畅。",
+              "objects": ["shelf", "aisle", "drink"],
+              "traffic_light": null,
+              "target_found": true,
+              "product_name": null,
+              "confidence": 0.76,
+              "latency_ms": 920,
+              "fallback_reason": null
+            }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SemanticAnalyzeResponse::class.java)
+
+        assertEquals(SemanticAnalyzeMode.SURROUNDINGS.value, response.mode)
+        assertEquals(null, response.productName)
+        assertTrue(response.summary.contains("周围"))
+        assertEquals(listOf("shelf", "aisle", "drink"), response.objects)
     }
 }

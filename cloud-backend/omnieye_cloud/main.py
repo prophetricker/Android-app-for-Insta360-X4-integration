@@ -10,6 +10,10 @@ from pydantic import BaseModel
 
 from .service import AnalysisService
 from .semantic import SemanticAnalyzer, SemanticMode
+from .runtime_config import RuntimeConfig, load_env_file
+
+
+load_env_file(Path("cloud-backend/.env"))
 
 
 class AnalyzeResponse(BaseModel):
@@ -29,6 +33,17 @@ class SemanticAnalyzeResponse(BaseModel):
     product_name: str | None
     confidence: float
     latency_ms: int
+    fallback_reason: str | None = None
+
+
+class ConfigStatusResponse(BaseModel):
+    openai_api_key_set: bool
+    openai_installed: bool
+    openai_vision_model: str
+    openai_base_url_set: bool
+    openai_user_agent_set: bool
+    dap_repo_dir_set: bool
+    dap_weights_path_set: bool
 
 
 service = AnalysisService(upload_dir=Path("cloud-backend/uploads"))
@@ -50,6 +65,11 @@ app = FastAPI(title="OmniEye Cloud Backend", lifespan=lifespan)
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.get("/config/status", response_model=ConfigStatusResponse)
+def config_status() -> ConfigStatusResponse:
+    return ConfigStatusResponse(**RuntimeConfig.from_env().__dict__)
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -94,6 +114,7 @@ async def semantic_analyze(
         product_name=result.product_name,
         confidence=result.confidence,
         latency_ms=result.latency_ms,
+        fallback_reason=result.fallback_reason,
     )
 
 
