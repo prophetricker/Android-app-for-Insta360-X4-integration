@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from io import BytesIO
+import logging
 from pathlib import Path
 from time import perf_counter
 
@@ -16,6 +18,7 @@ from .runtime_config import RuntimeConfig, load_env_file
 
 
 load_env_file(Path("cloud-backend/.env"))
+logger = logging.getLogger("omnieye_cloud")
 
 
 class AnalyzeResponse(BaseModel):
@@ -77,17 +80,44 @@ def config_status() -> ConfigStatusResponse:
 async def analyze(frame: UploadFile = File(...)) -> AnalyzeResponse:
     start = perf_counter()
     content = await frame.read()
-    if not _is_image(content):
+    image_size = _image_size(content)
+    if image_size is None:
         raise HTTPException(status_code=400, detail="Uploaded frame must be an image")
+    logger.info(
+        "analyze_received filename=%s bytes=%s image=%sx%s",
+        frame.filename,
+        len(content),
+        image_size[0],
+        image_size[1],
+    )
 
     suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
+    save_start = perf_counter()
     result = service.save_latest_frame(content, suffix=suffix)
+    save_ms = int((perf_counter() - save_start) * 1000)
+    model_ms = 0
+    used_visual_fallback = False
     if result.confidence == 0.0:
         frame_path = service.latest_frame_path()
         if frame_path is not None:
+            model_start = perf_counter()
             vision_result = await run_in_threadpool(VisionObstacleAnalyzer().analyze, frame_path)
+            model_ms = int((perf_counter() - model_start) * 1000)
+            used_visual_fallback = True
             result = vision_result.result
     latency_ms = int((perf_counter() - start) * 1000)
+    logger.info(
+        "analyze_timing bytes=%s image=%sx%s save_ms=%s model_ms=%s visual_fallback=%s total_ms=%s level=%s confidence=%.2f",
+        len(content),
+        image_size[0],
+        image_size[1],
+        save_ms,
+        model_ms,
+        used_visual_fallback,
+        latency_ms,
+        result.level,
+        result.confidence,
+    )
     return AnalyzeResponse(
         distance_m=result.distance_m,
         level=result.level,
@@ -103,14 +133,41 @@ async def semantic_analyze(
     mode: SemanticMode = Form(...),
     query: str | None = Form(default=None),
 ) -> SemanticAnalyzeResponse:
+    start = perf_counter()
     content = await frame.read()
-    if not _is_image(content):
+    image_size = _image_size(content)
+    if image_size is None:
         raise HTTPException(status_code=400, detail="Uploaded frame must be an image")
+    logger.info(
+        "semantic_received mode=%s filename=%s bytes=%s image=%sx%s",
+        mode.value,
+        frame.filename,
+        len(content),
+        image_size[0],
+        image_size[1],
+    )
 
     suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
     frame_path = service.upload_dir / f"semantic_latest{suffix}"
+    save_start = perf_counter()
     frame_path.write_bytes(content)
+    save_ms = int((perf_counter() - save_start) * 1000)
+    model_start = perf_counter()
     result = await run_in_threadpool(SemanticAnalyzer().analyze, frame_path, mode=mode, query=query)
+    model_ms = int((perf_counter() - model_start) * 1000)
+    total_ms = int((perf_counter() - start) * 1000)
+    logger.info(
+        "semantic_timing mode=%s bytes=%s image=%sx%s save_ms=%s model_ms=%s total_ms=%s fallback=%s confidence=%.2f",
+        mode.value,
+        len(content),
+        image_size[0],
+        image_size[1],
+        save_ms,
+        model_ms,
+        total_ms,
+        result.fallback_reason,
+        result.confidence,
+    )
     return SemanticAnalyzeResponse(
         mode=result.mode,
         summary=result.summary,
@@ -124,10 +181,14 @@ async def semantic_analyze(
     )
 
 
-def _is_image(content: bytes) -> bool:
+def _image_size(content: bytes) -> tuple[int, int] | None:
     try:
-        with Image.open(__import__("io").BytesIO(content)) as image:
+        with Image.open(BytesIO(content)) as image:
             image.verify()
-        return True
+            return image.size
     except (UnidentifiedImageError, OSError):
-        return False
+        return None
+
+
+def _is_image(content: bytes) -> bool:
+    return _image_size(content) is not None

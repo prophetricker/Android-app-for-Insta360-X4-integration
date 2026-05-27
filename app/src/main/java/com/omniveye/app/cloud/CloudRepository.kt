@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import kotlin.system.measureTimeMillis
 
 sealed class CloudState {
     data object Idle : CloudState()
@@ -197,7 +198,7 @@ class CloudRepository(private val context: Context) {
                     )
                 )
             } else {
-                val file = imageUploadManager.prepareForUpload(bitmap)
+                val file = imageUploadManager.prepareForUpload(bitmap, UploadImagePurpose.General)
                 val imagePart = imageUploadManager.createMultipartBody(file)
                 val descPart = imageUploadManager.createDescriptionBody(description)
 
@@ -228,11 +229,20 @@ class CloudRepository(private val context: Context) {
                 throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
             }
 
-            val file = imageUploadManager.prepareForUpload(bitmap)
+            val file = imageUploadManager.prepareForUpload(bitmap, UploadImagePurpose.ObstacleAnalyze)
             val framePart = createAnalyzeFramePart(file)
 
             _state.value = CloudState.Processing("云端 DAP 正在分析...")
-            val response = createApiService(source).analyzeFrame(framePart)
+            var response: retrofit2.Response<AnalyzeResponse>
+            val requestMs = measureTimeMillis {
+                response = createApiService(source).analyzeFrame(framePart)
+            }
+            Log.d(
+                TAG,
+                "AnalyzeFrameTiming source=$source bitmap=${bitmap.width}x${bitmap.height} " +
+                    "uploadBytes=${file.length()} requestMs=$requestMs " +
+                    "backendLatencyMs=${response.body()?.latencyMs}"
+            )
 
             if (response.isSuccessful && response.body() != null) {
                 val analyzeResponse = response.body()!!
@@ -271,13 +281,22 @@ class CloudRepository(private val context: Context) {
                 throw Exception("Cellular cloud route not ready. Enable mobile data and keep the X4 Wi-Fi connected.")
             }
 
-            val file = imageUploadManager.prepareForUpload(bitmap)
+            val file = imageUploadManager.prepareForUpload(bitmap, UploadImagePurpose.SemanticAnalyze)
             val framePart = createAnalyzeFramePart(file)
             val modePart = createSemanticTextPart(mode.value)
             val queryPart = query?.takeIf { it.isNotBlank() }?.let(::createSemanticTextPart)
 
             _state.value = CloudState.Processing("云端视觉语义正在分析...")
-            val response = createApiService(source).semanticAnalyze(framePart, modePart, queryPart)
+            var response: retrofit2.Response<SemanticAnalyzeResponse>
+            val requestMs = measureTimeMillis {
+                response = createApiService(source).semanticAnalyze(framePart, modePart, queryPart)
+            }
+            Log.d(
+                TAG,
+                "SemanticAnalyzeTiming source=$source mode=${mode.value} bitmap=${bitmap.width}x${bitmap.height} " +
+                    "uploadBytes=${file.length()} requestMs=$requestMs " +
+                    "backendLatencyMs=${response.body()?.latencyMs}"
+            )
 
             if (response.isSuccessful && response.body() != null) {
                 val semanticResponse = response.body()!!

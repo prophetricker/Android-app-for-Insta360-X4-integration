@@ -35,6 +35,7 @@ import java.net.URLConnection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.system.measureTimeMillis
 
 sealed class CameraConnectionState {
     data object Disconnected : CameraConnectionState()
@@ -492,14 +493,8 @@ class CameraManager(private val context: Context) {
                 if (bitmap != null) {
                     _lastPhotoBitmap.value = bitmap
                     _photoList.value = _photoList.value + actualUrl
-                    // Save to gallery
-                    val savedPath = saveBitmapToGallery(bitmap)
-                    if (savedPath != null) {
-                        return CameraOperationResult.Success(bitmap, savedPath)
-                    } else {
-                        Log.e(TAG, "Failed to save photo to gallery")
-                        return CameraOperationResult.Error("Failed to save photo to gallery")
-                    }
+                    Log.d(TAG, "Photo ready for analysis without blocking gallery save")
+                    return CameraOperationResult.Success(bitmap)
                 }
             }
 
@@ -512,14 +507,8 @@ class CameraManager(private val context: Context) {
         if (bitmap != null) {
             _lastPhotoBitmap.value = bitmap
             _photoList.value = _photoList.value + fileUrl
-            // Save to gallery
-            val savedPath = saveBitmapToGallery(bitmap)
-            if (savedPath != null) {
-                return CameraOperationResult.Success(bitmap, savedPath)
-            } else {
-                Log.e(TAG, "Failed to save photo to gallery")
-                return CameraOperationResult.Error("Failed to save photo to gallery")
-            }
+            Log.d(TAG, "Photo ready for analysis without blocking gallery save")
+            return CameraOperationResult.Success(bitmap)
         } else {
             return CameraOperationResult.Error("Failed to download photo")
         }
@@ -789,10 +778,13 @@ class CameraManager(private val context: Context) {
             val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
             if (uri != null) {
-                resolver.openOutputStream(uri)?.use { outputStream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream)
-                    outputStream.flush()
+                val saveMs = measureTimeMillis {
+                    resolver.openOutputStream(uri)?.use { outputStream ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                        outputStream.flush()
+                    }
                 }
+                Log.d(TAG, "Photo MediaStore encode completed in ${saveMs}ms")
 
                 // 通知媒体扫描
                 MediaScannerConnection.scanFile(
@@ -821,11 +813,13 @@ class CameraManager(private val context: Context) {
                 omniEyeDir.mkdirs()
             }
             val imageFile = File(omniEyeDir, fileName)
-            FileOutputStream(imageFile).use { fos ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos)
+            val saveMs = measureTimeMillis {
+                FileOutputStream(imageFile).use { fos ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos)
+                }
             }
             val savedPath = imageFile.absolutePath
-            Log.d(TAG, "Photo saved to app directory: $savedPath")
+            Log.d(TAG, "Photo saved to app directory: $savedPath in ${saveMs}ms")
             MediaScannerConnection.scanFile(
                 context,
                 arrayOf(savedPath),
