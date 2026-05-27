@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.system.measureTimeMillis
 
 data class MainUiState(
     val cameraState: CameraConnectionState = CameraConnectionState.Disconnected,
@@ -65,10 +66,49 @@ data class MainUiState(
     val resultSourceLabel: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val lastAnalysisTiming: FrameAnalysisTiming? = null,
     val autoCaptureEnabled: Boolean = false,
     val autoCaptureIntervalMs: Long = 500,
     val totalPhotosCaptured: Int = 0
 )
+
+data class FrameAnalysisTiming(
+    val totalMs: Long,
+    val captureMs: Long?,
+    val uploadRoundTripMs: Long,
+    val backendLatencyMs: Int,
+    val bitmapWidth: Int,
+    val bitmapHeight: Int
+) {
+    fun toSummaryText(): String {
+        val parts = mutableListOf("总耗时 $totalMs ms")
+        captureMs?.let { parts += "X4 拍照 $it ms" }
+        parts += "云端往返 $uploadRoundTripMs ms"
+        parts += "后端 $backendLatencyMs ms"
+        parts += "图片 ${bitmapWidth}x${bitmapHeight}"
+        return parts.joinToString("，")
+    }
+}
+
+enum class FrameAcquisitionPlan {
+    UseLatestCameraFrame,
+    CaptureCameraFrame,
+    UseDevelopmentSample
+}
+
+fun selectSurroundingsFramePlan(
+    cameraState: CameraConnectionState,
+    hasLatestCameraFrame: Boolean
+): FrameAcquisitionPlan {
+    return when {
+        cameraState is CameraConnectionState.Connected && hasLatestCameraFrame ->
+            FrameAcquisitionPlan.UseLatestCameraFrame
+        cameraState is CameraConnectionState.Connected ->
+            FrameAcquisitionPlan.CaptureCameraFrame
+        else ->
+            FrameAcquisitionPlan.UseDevelopmentSample
+    }
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -228,20 +268,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     analyzeResult = null,
                     semanticResult = null,
                     errorMessage = null,
-                    resultSourceLabel = null
+                    resultSourceLabel = null,
+                    lastAnalysisTiming = null
                 )
             }
 
             when (cameraManager.connectionState.value) {
                 is CameraConnectionState.Connected -> {
-                    when (val result = cameraManager.takePhoto()) {
+                    var capture: com.omniveye.app.camera.CameraOperationResult
+                    val captureMs = measureTimeMillis {
+                        capture = cameraManager.takePhoto()
+                    }
+                    when (val result = capture) {
                         is com.omniveye.app.camera.CameraOperationResult.Success -> {
                             val bitmap = result.data as? Bitmap
                             if (bitmap != null) {
                                 uploadImage(
                                     bitmap = bitmap,
                                     source = AnalyzeFrameSource.CameraCapture,
-                                    sourceLabel = roadshowAnalyzeSourceLabel("X4 实拍")
+                                    sourceLabel = roadshowAnalyzeSourceLabel("X4 实拍"),
+                                    captureMs = captureMs
                                 )
                             } else {
                                 _uiState.update {
@@ -261,7 +307,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     uploadImage(
                         bitmap = bitmap,
                         source = AnalyzeFrameSource.DevelopmentSample,
-                        sourceLabel = "开发样张"
+                        sourceLabel = "开发样张",
+                        captureMs = null
                     )
                 }
             }
@@ -291,14 +338,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun uploadImage(
         bitmap: Bitmap,
         source: AnalyzeFrameSource = AnalyzeFrameSource.DevelopmentSample,
-        sourceLabel: String? = null
+        sourceLabel: String? = null,
+        captureMs: Long? = null
     ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, lastCapturedBitmap = bitmap) }
+            _uiState.update { it.copy(isLoading = true, lastCapturedBitmap = bitmap, lastAnalysisTiming = null) }
 
-            when (val result = cloudRepository.analyzeFrame(bitmap, source)) {
+            var analyzeResult: CloudResult<AnalyzeResponse>
+            val uploadMs = measureTimeMillis {
+                analyzeResult = cloudRepository.analyzeFrame(bitmap, source)
+            }
+            when (val result = analyzeResult) {
                 is CloudResult.Success -> {
-                    handleAnalyzeResult(result.data, sourceLabel)
+                    val totalMs = (captureMs ?: 0L) + uploadMs
+                    handleAnalyzeResult(
+                        result = result.data,
+                        sourceLabel = sourceLabel,
+                        timing = FrameAnalysisTiming(
+                            totalMs = totalMs,
+                            captureMs = captureMs,
+                            uploadRoundTripMs = uploadMs,
+                            backendLatencyMs = result.data.latencyMs,
+                            bitmapWidth = bitmap.width,
+                            bitmapHeight = bitmap.height
+                        )
+                    )
                 }
                 is CloudResult.Error -> {
                     _uiState.update {
@@ -312,13 +376,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleAnalyzeResult(result: AnalyzeResponse, sourceLabel: String?) {
+    private fun handleAnalyzeResult(
+        result: AnalyzeResponse,
+        sourceLabel: String?,
+        timing: FrameAnalysisTiming? = null
+    ) {
         _uiState.update {
             it.copy(
                 isLoading = false,
                 analyzeResult = result,
                 processedResult = result.sceneText,
-                resultSourceLabel = sourceLabel
+                resultSourceLabel = sourceLabel,
+                lastAnalysisTiming = timing
             )
         }
         vibrateForAnalyzeResult(result)
@@ -356,20 +425,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun analyzeSurroundings() {
-        val bitmap = cameraManager.lastPhotoBitmap.value ?: DevelopmentSampleFrame.createBitmap()
-        val source = if (cameraManager.connectionState.value is CameraConnectionState.Connected &&
-            cameraManager.lastPhotoBitmap.value != null
+        val latestCameraBitmap = cameraManager.lastPhotoBitmap.value
+        when (
+            selectSurroundingsFramePlan(
+                cameraState = cameraManager.connectionState.value,
+                hasLatestCameraFrame = latestCameraBitmap != null
+            )
         ) {
-            AnalyzeFrameSource.CameraCapture
-        } else {
-            AnalyzeFrameSource.DevelopmentSample
+            FrameAcquisitionPlan.UseLatestCameraFrame -> {
+                analyzeSurroundingsBitmap(
+                    bitmap = latestCameraBitmap ?: return,
+                    source = AnalyzeFrameSource.CameraCapture,
+                    sourceLabel = "X4 实拍 · 周围环境"
+                )
+            }
+            FrameAcquisitionPlan.CaptureCameraFrame -> {
+                capturePhotoForSurroundings()
+            }
+            FrameAcquisitionPlan.UseDevelopmentSample -> {
+                analyzeSurroundingsBitmap(
+                    bitmap = DevelopmentSampleFrame.createBitmap(),
+                    source = AnalyzeFrameSource.DevelopmentSample,
+                    sourceLabel = "开发样张 · 周围环境"
+                )
+            }
         }
-        val sourceLabel = if (source == AnalyzeFrameSource.CameraCapture) {
-            "X4 实拍 · 周围环境"
-        } else {
-            "开发样张 · 周围环境"
-        }
+    }
 
+    private fun capturePhotoForSurroundings() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    resultSourceLabel = "X4 实拍 · 周围环境",
+                    analyzeResult = null,
+                    semanticResult = null,
+                    errorMessage = null,
+                    lastAnalysisTiming = null
+                )
+            }
+
+            var capture: com.omniveye.app.camera.CameraOperationResult
+            val captureMs = measureTimeMillis {
+                capture = cameraManager.takePhoto()
+            }
+            when (val result = capture) {
+                is com.omniveye.app.camera.CameraOperationResult.Success -> {
+                    val bitmap = result.data as? Bitmap
+                    if (bitmap != null) {
+                        analyzeSurroundingsBitmap(
+                            bitmap = bitmap,
+                            source = AnalyzeFrameSource.CameraCapture,
+                            sourceLabel = "X4 实拍 · 周围环境",
+                            captureMs = captureMs
+                        )
+                    } else {
+                        _uiState.update {
+                            it.copy(isLoading = false, errorMessage = "X4 did not return a bitmap")
+                        }
+                    }
+                }
+                is com.omniveye.app.camera.CameraOperationResult.Error -> {
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = result.message)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun analyzeSurroundingsBitmap(
+        bitmap: Bitmap,
+        source: AnalyzeFrameSource,
+        sourceLabel: String,
+        captureMs: Long? = null
+    ) {
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -378,19 +508,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     resultSourceLabel = sourceLabel,
                     analyzeResult = null,
                     semanticResult = null,
-                    errorMessage = null
+                    errorMessage = null,
+                    lastAnalysisTiming = null
                 )
             }
 
-            when (
-                val result = cloudRepository.semanticAnalyzeFrame(
+            var semanticResult: CloudResult<SemanticAnalyzeResponse>
+            val uploadMs = measureTimeMillis {
+                semanticResult = cloudRepository.semanticAnalyzeFrame(
                     bitmap = bitmap,
                     mode = SemanticAnalyzeMode.SURROUNDINGS,
                     query = null,
                     source = source
                 )
-            ) {
-                is CloudResult.Success -> handleSemanticResult(result.data, sourceLabel)
+            }
+
+            when (val result = semanticResult) {
+                is CloudResult.Success -> {
+                    val totalMs = (captureMs ?: 0L) + uploadMs
+                    handleSemanticResult(
+                        result = result.data,
+                        sourceLabel = sourceLabel,
+                        timing = FrameAnalysisTiming(
+                            totalMs = totalMs,
+                            captureMs = captureMs,
+                            uploadRoundTripMs = uploadMs,
+                            backendLatencyMs = result.data.latencyMs,
+                            bitmapWidth = bitmap.width,
+                            bitmapHeight = bitmap.height
+                        )
+                    )
+                }
                 is CloudResult.Error -> {
                     _uiState.update {
                         it.copy(
@@ -441,13 +589,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleSemanticResult(result: SemanticAnalyzeResponse, sourceLabel: String) {
+    private fun handleSemanticResult(
+        result: SemanticAnalyzeResponse,
+        sourceLabel: String,
+        timing: FrameAnalysisTiming? = null
+    ) {
         _uiState.update {
             it.copy(
                 isLoading = false,
                 semanticResult = result,
                 processedResult = result.summary,
-                resultSourceLabel = sourceLabel
+                resultSourceLabel = sourceLabel,
+                lastAnalysisTiming = timing
             )
         }
         speakResult(result.summary)

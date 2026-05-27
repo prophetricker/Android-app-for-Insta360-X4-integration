@@ -194,9 +194,9 @@ fun MainScreen(
                 exit = fadeOut()
             ) {
                 uiState.semanticResult?.let { result ->
-                    SemanticResultCard(result, uiState.resultSourceLabel)
+                    SemanticResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
                 } ?: uiState.analyzeResult?.let { result ->
-                    AnalyzeResultCard(result, uiState.resultSourceLabel)
+                    AnalyzeResultCard(result, uiState.resultSourceLabel, uiState.lastAnalysisTiming)
                 }
             }
 
@@ -559,6 +559,7 @@ fun VoiceInputSection(
 fun AnalyzeResultCard(
     result: com.omniveye.app.cloud.AnalyzeResponse,
     resultSourceLabel: String?,
+    timing: com.omniveye.app.viewmodel.FrameAnalysisTiming?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -612,6 +613,13 @@ fun AnalyzeResultCard(
                 result.latencyMs
             )
         )
+
+        timing?.let {
+            ResultCard(
+                title = "本机链路耗时",
+                content = it.toSummaryText()
+            )
+        }
     }
 }
 
@@ -619,6 +627,7 @@ fun AnalyzeResultCard(
 fun SemanticResultCard(
     result: com.omniveye.app.cloud.SemanticAnalyzeResponse,
     resultSourceLabel: String?,
+    timing: com.omniveye.app.viewmodel.FrameAnalysisTiming?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -674,5 +683,12 @@ fun SemanticResultCard(
             title = "语义结果",
             content = detail
         )
+
+        timing?.let {
+            ResultCard(
+                title = "本机链路耗时",
+                content = it.toSummaryText()
+            )
+        }
     }
 }

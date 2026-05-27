@@ -47,7 +47,6 @@ class ConfigStatusResponse(BaseModel):
 
 
 service = AnalysisService(upload_dir=Path("cloud-backend/uploads"))
-semantic_analyzer = SemanticAnalyzer()
 
 
 @asynccontextmanager
@@ -104,7 +103,7 @@ async def semantic_analyze(
     suffix = Path(frame.filename or "frame.jpg").suffix or ".jpg"
     frame_path = service.upload_dir / f"semantic_latest{suffix}"
     frame_path.write_bytes(content)
-    result = semantic_analyzer.analyze(frame_path, mode=mode, query=query)
+    result = SemanticAnalyzer().analyze(frame_path, mode=mode, query=query)
     return SemanticAnalyzeResponse(
         mode=result.mode,
         summary=result.summary,
