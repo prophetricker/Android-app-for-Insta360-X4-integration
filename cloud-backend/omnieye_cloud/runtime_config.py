@@ -34,4 +34,13 @@ class RuntimeConfig:
 def load_env_file(path: Path) -> bool:
     if not path.exists():
         return False
-    return load_dotenv(path, override=False)
+    loaded = load_dotenv(path, override=False, encoding="utf-8-sig")
+    if not loaded:
+        return False
+
+    empty_keys = [key for key, value in os.environ.items() if value == ""]
+    if empty_keys:
+        for key in empty_keys:
+            os.environ.pop(key, None)
+        load_dotenv(path, override=False, encoding="utf-8-sig")
+    return True

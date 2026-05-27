@@ -207,6 +207,25 @@ def test_load_env_file_sets_missing_values(tmp_path, monkeypatch):
     assert RuntimeConfig.from_env().openai_user_agent_set is True
 
 
+def test_load_env_file_replaces_empty_process_values(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("OPENAI_VISION_MODEL", "")
+    monkeypatch.setenv("OPENAI_BASE_URL", "")
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-test\n"
+        "OPENAI_VISION_MODEL=Qwen3.6-27B\n"
+        "OPENAI_BASE_URL=https://spiritx-api-hh.xzinfra.com:1443/spiritx-api/v1\n",
+        encoding="utf-8",
+    )
+
+    load_env_file(env_file)
+
+    assert RuntimeConfig.from_env().openai_api_key_set is True
+    assert RuntimeConfig.from_env().openai_vision_model == "Qwen3.6-27B"
+    assert RuntimeConfig.from_env().openai_base_url_set is True
+
+
 def test_semantic_analyzer_reads_openai_base_url(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://xlabapi.com/v1")
