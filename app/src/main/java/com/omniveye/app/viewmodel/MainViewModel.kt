@@ -119,6 +119,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "MainViewModel"
+        private const val ROADSHOW_RECOGNIZING_TEXT = "正在识别指令"
+        private const val ROADSHOW_ANALYZING_TEXT = "分析指令中"
+        private const val ROADSHOW_SURROUNDINGS_TEXT =
+            "前方是巨大的蓝色博览会主展板，右侧是白色座椅休息区和开阔展厅通道，左侧也是展览区域。建议先停留确认方向，再向右侧开阔通道绕行继续参观。"
     }
 
     private val cameraManager = CameraManager(application)
@@ -681,6 +685,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reportSpeechError(message: String) {
         _uiState.update { it.copy(speechRecognitionState = SpeechRecognitionState.Error(message)) }
+    }
+
+    fun showRoadshowCommandRecognition() {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                recognizedText = ROADSHOW_RECOGNIZING_TEXT,
+                processedResult = ROADSHOW_RECOGNIZING_TEXT,
+                analyzeResult = null,
+                semanticResult = null,
+                errorMessage = null,
+                resultSourceLabel = "路演语音按键"
+            )
+        }
+        speakResult(ROADSHOW_RECOGNIZING_TEXT)
+    }
+
+    fun playRoadshowSurroundingsResult() {
+        val result = SemanticAnalyzeResponse(
+            mode = SemanticAnalyzeMode.SURROUNDINGS.value,
+            summary = ROADSHOW_SURROUNDINGS_TEXT,
+            objects = listOf("蓝色主展板", "白色座椅", "休息区", "展厅通道", "人群", "展位"),
+            trafficLight = null,
+            targetFound = false,
+            productName = null,
+            confidence = 0.95,
+            latencyMs = 0,
+            fallbackReason = null
+        )
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                recognizedText = ROADSHOW_ANALYZING_TEXT,
+                processedResult = result.summary,
+                analyzeResult = null,
+                semanticResult = result,
+                errorMessage = null,
+                resultSourceLabel = "路演预置全景图",
+                lastAnalysisTiming = FrameAnalysisTiming(
+                    totalMs = 0,
+                    captureMs = null,
+                    uploadRoundTripMs = 0,
+                    backendLatencyMs = 0,
+                    bitmapWidth = 0,
+                    bitmapHeight = 0
+                )
+            )
+        }
+        speakResult(ROADSHOW_ANALYZING_TEXT)
+        viewModelScope.launch {
+            delay(800)
+            speakResult(result.summary)
+        }
     }
 
     fun processVoiceInput(text: String) {

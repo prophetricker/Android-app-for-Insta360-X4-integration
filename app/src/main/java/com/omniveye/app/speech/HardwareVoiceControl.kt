@@ -1,11 +1,16 @@
 package com.omniveye.app.speech
 
 class HardwareVoiceControl {
-    private var listening = false
+    private var waitingForSecondPress = false
 
     fun onVolumeDownPressed(): HardwareVoiceAction {
-        listening = !listening
-        return if (listening) HardwareVoiceAction.StartListening else HardwareVoiceAction.StopListening
+        return if (waitingForSecondPress) {
+            waitingForSecondPress = false
+            HardwareVoiceAction.PlayRoadshowSurroundingsResult
+        } else {
+            waitingForSecondPress = true
+            HardwareVoiceAction.ShowRecognizingCommand
+        }
     }
 
     fun onVolumeDownReleased(): HardwareVoiceAction {
@@ -13,12 +18,12 @@ class HardwareVoiceControl {
     }
 
     fun onRecognitionInactive() {
-        listening = false
+        waitingForSecondPress = false
     }
 }
 
 enum class HardwareVoiceAction {
-    StartListening,
-    StopListening,
+    ShowRecognizingCommand,
+    PlayRoadshowSurroundingsResult,
     Ignore
 }

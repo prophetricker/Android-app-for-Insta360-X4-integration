@@ -5,31 +5,31 @@ import org.junit.Test
 
 class HardwareVoiceControlTest {
     @Test
-    fun volumeDownPressTogglesListening() {
+    fun volumeDownPressesAdvanceRoadshowPromptFlow() {
         val control = HardwareVoiceControl()
 
-        assertEquals(HardwareVoiceAction.StartListening, control.onVolumeDownPressed())
-        assertEquals(HardwareVoiceAction.StopListening, control.onVolumeDownPressed())
-        assertEquals(HardwareVoiceAction.StartListening, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.ShowRecognizingCommand, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.PlayRoadshowSurroundingsResult, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.ShowRecognizingCommand, control.onVolumeDownPressed())
     }
 
     @Test
-    fun volumeDownReleaseDoesNotStopListening() {
+    fun volumeDownReleaseDoesNotAdvanceRoadshowFlow() {
         val control = HardwareVoiceControl()
 
-        assertEquals(HardwareVoiceAction.StartListening, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.ShowRecognizingCommand, control.onVolumeDownPressed())
         assertEquals(HardwareVoiceAction.Ignore, control.onVolumeDownReleased())
-        assertEquals(HardwareVoiceAction.StopListening, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.PlayRoadshowSurroundingsResult, control.onVolumeDownPressed())
     }
 
     @Test
-    fun recognitionInactiveResetsNextPressToStartListening() {
+    fun recognitionInactiveResetsNextPressToRecognizingCommand() {
         val control = HardwareVoiceControl()
 
-        assertEquals(HardwareVoiceAction.StartListening, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.ShowRecognizingCommand, control.onVolumeDownPressed())
 
         control.onRecognitionInactive()
 
-        assertEquals(HardwareVoiceAction.StartListening, control.onVolumeDownPressed())
+        assertEquals(HardwareVoiceAction.ShowRecognizingCommand, control.onVolumeDownPressed())
     }
 }
