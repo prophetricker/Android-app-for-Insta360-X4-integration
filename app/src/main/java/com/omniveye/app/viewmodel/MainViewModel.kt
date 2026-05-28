@@ -122,7 +122,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val ROADSHOW_RECOGNIZING_TEXT = "正在识别指令"
         private const val ROADSHOW_ANALYZING_TEXT = "分析指令中"
         private const val ROADSHOW_SURROUNDINGS_TEXT =
-            "前方是巨大的蓝色博览会主展板，右侧是白色座椅休息区和开阔展厅通道，左侧也是展览区域。建议先停留确认方向，再向右侧开阔通道绕行继续参观。"
+            "前方是台下观众席和评委区，中间有白色座椅和开阔通道，左右两侧是展位和设备区域。身后是蓝色世界智能产业博览会主背景板。建议保持面向前方，沿中间通道缓慢前进。"
     }
 
     private val cameraManager = CameraManager(application)
@@ -706,7 +706,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val result = SemanticAnalyzeResponse(
             mode = SemanticAnalyzeMode.SURROUNDINGS.value,
             summary = ROADSHOW_SURROUNDINGS_TEXT,
-            objects = listOf("蓝色主展板", "白色座椅", "休息区", "展厅通道", "人群", "展位"),
+            objects = listOf("观众席", "评委区", "白色座椅", "展厅通道", "展位", "蓝色主背景板"),
             trafficLight = null,
             targetFound = false,
             productName = null,
